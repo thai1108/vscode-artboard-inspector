@@ -1,4 +1,4 @@
-import type { ArtboardScene, ArtboardSummary } from './xd/scene.ts';
+import type { ArtboardScene, ArtboardSummary } from './scene/scene.ts';
 
 export interface ImagePayload {
   uid: string;

@@ -1,8 +1,8 @@
 import type * as vscode from 'vscode';
-import { XdEditorProvider } from './xdEditorProvider.ts';
+import { DesignEditorProvider } from './designEditorProvider.ts';
 
 export function activate(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(XdEditorProvider.register(context));
+  context.subscriptions.push(...DesignEditorProvider.register(context));
 }
 
 export function deactivate(): void {}

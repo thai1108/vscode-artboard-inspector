@@ -1,6 +1,6 @@
 import { geometryElement } from '../render/svg.ts';
 import { intersect, union, type Box } from '../render/geometry.ts';
-import type { ArtboardScene, SceneNode, ShapeNode, TextNode } from '../xd/scene.ts';
+import type { ArtboardScene, SceneNode, ShapeNode, TextNode } from '../scene/scene.ts';
 
 // Noto Sans ascender/descender: XD sizes text boxes from the baseline with these, not from the glyphs drawn.
 const ASCENT = 1.069;
@@ -62,6 +62,10 @@ export function measureLayers(svg: SVGSVGElement, scene: ArtboardScene): Measure
         }
         break;
       }
+    }
+    if (node.layoutSize) {
+      // Figma reports a layer's own box, not the extent of what it draws.
+      box = transformBox(ctm, { x: 0, y: 0, width: node.layoutSize.width, height: node.layoutSize.height });
     }
     if (box) {
       boxes.set(node.key, box);

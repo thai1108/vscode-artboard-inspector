@@ -1,4 +1,4 @@
-import type { ArtboardScene, SceneNode } from '../xd/scene.ts';
+import type { ArtboardScene, SceneNode } from '../scene/scene.ts';
 
 const SAMPLE = 'mmmmmmmmmmlli WW 0123 日本語テキスト';
 const availability = new Map<string, boolean>();

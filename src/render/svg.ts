@@ -1,7 +1,8 @@
-import { toHex } from '../xd/color.ts';
-import { isIdentity } from '../xd/matrix.ts';
+import { toHex } from '../scene/color.ts';
+import { isIdentity } from '../scene/matrix.ts';
 import type {
   ArtboardScene,
+  FrameStyle,
   Geometry,
   GroupNode,
   Matrix,
@@ -14,7 +15,7 @@ import type {
   TextNode,
   TextStyle,
   TextTransform,
-} from '../xd/scene.ts';
+} from '../scene/scene.ts';
 
 export type ImageUrlResolver = (uid: string) => string | undefined;
 
@@ -80,26 +81,30 @@ class SvgWriter {
     }
   }
 
-  private shape(node: ShapeNode): string {
+  private shape(node: ShapeNode, className = 'dv-geom'): string {
     const { geometry, stroke } = node;
     const primary = [this.fill(node.fill, node.key)];
     let auxiliary = '';
-    if (stroke) {
+    if (stroke && node.strokeOutline) {
+      auxiliary = `<path d="${escapeAttr(node.strokeOutline)}" ${colorAttrs('fill', stroke.color)}/>`;
+    } else if (stroke?.sides && geometry.type === 'rect') {
+      auxiliary = sideBorders(geometry, stroke, stroke.sides);
+    } else if (stroke) {
       if (stroke.align === 'center' || geometry.type === 'line') {
         primary.push(strokeAttrs(stroke, stroke.width));
       } else if (geometry.type === 'path') {
-        auxiliary = this.alignedPathStroke(node.key, geometry.d, stroke);
+        auxiliary = this.alignedPathStroke(node.key, geometry.d, geometry.fillRule ?? 'evenodd', stroke);
       } else {
         const offset = stroke.align === 'inside' ? -stroke.width / 2 : stroke.width / 2;
         auxiliary = geometryElement(grow(geometry, offset), `fill="none" ${strokeAttrs(stroke, stroke.width)}`);
       }
     }
-    return geometryElement(geometry, `class="dv-geom" ${primary.join(' ')}`) + auxiliary;
+    return geometryElement(geometry, `class="${className}" ${primary.join(' ')}`) + auxiliary;
   }
 
   /** SVG only strokes centered, so inside/outside path strokes are drawn twice as wide and clipped/masked. */
-  private alignedPathStroke(key: string, d: string, stroke: Stroke): string {
-    const path = `d="${escapeAttr(d)}" fill-rule="evenodd"`;
+  private alignedPathStroke(key: string, d: string, fillRule: string, stroke: Stroke): string {
+    const path = `d="${escapeAttr(d)}" fill-rule="${fillRule}"`;
     const doubled = `fill="none" ${strokeAttrs(stroke, stroke.width * 2)}`;
     if (stroke.align === 'inside') {
       const id = `dv-${idPart(key)}-stroke-clip`;
@@ -115,16 +120,32 @@ class SvgWriter {
   }
 
   private group(node: GroupNode): string {
+    const background = node.frame ? this.frameBackground(node, node.frame) : '';
     const children = node.children.map((child) => this.node(child)).join('');
     if (!node.clip) {
-      return children;
+      return background + children;
     }
     const id = `dv-${idPart(node.key)}-clip`;
     const shapes = node.clip
       .map((shape) => geometryElement(shape.geometry, isIdentity(shape.transform) ? '' : `transform="${matrix(shape.transform)}"`))
       .join('');
     this.defs.push(`<clipPath id="${id}">${shapes}</clipPath>`);
-    return `<g clip-path="url(#${id})">${children}</g>`;
+    return `${background}<g clip-path="url(#${id})">${children}</g>`;
+  }
+
+  /** A frame's own fill and border, drawn under its (clipped) children. */
+  private frameBackground(node: GroupNode, frame: FrameStyle): string {
+    return this.shape(
+      {
+        ...node,
+        key: `${node.key}-frame`,
+        kind: 'shape',
+        geometry: { type: 'rect', x: 0, y: 0, width: frame.width, height: frame.height, radii: frame.radii },
+        fill: frame.fill,
+        stroke: frame.stroke,
+      },
+      'dv-frame',
+    );
   }
 
   private fill(paint: Paint | null, key: string): string {
@@ -194,7 +215,8 @@ function text(node: TextNode): string {
       const runs = line.runs
         .map((run) => {
           const style = node.styles[run.style];
-          const attrs = [run.x === undefined ? '' : `x="${num(run.x)}"`, style ? textStyleAttrs(style, run.glyphFont) : ''];
+          const position = run.xs ? `x="${run.xs.map(num).join(' ')}"` : run.x === undefined ? '' : `x="${num(run.x)}"`;
+          const attrs = [position, style ? textStyleAttrs(style, run.glyphFont) : ''];
           if (run.glyphFont && PROPORTIONAL_UI_FONT.test(run.glyphFont)) {
             attrs.push('class="dv-palt"');
           }
@@ -266,8 +288,27 @@ export function geometryElement(geometry: Geometry, attrs: string): string {
     case 'line':
       return `<line x1="${num(geometry.x1)}" y1="${num(geometry.y1)}" x2="${num(geometry.x2)}" y2="${num(geometry.y2)}" ${attrs}/>`;
     case 'path':
-      return `<path d="${escapeAttr(geometry.d)}" fill-rule="evenodd" ${attrs}/>`;
+      return `<path d="${escapeAttr(geometry.d)}" fill-rule="${geometry.fillRule ?? 'evenodd'}" ${attrs}/>`;
   }
+}
+
+/** Borders whose width differs per side, drawn as filled strips (corner radii are ignored). */
+function sideBorders(rect: { x: number; y: number; width: number; height: number }, stroke: Stroke, [top, right, bottom, left]: [number, number, number, number]): string {
+  // How far each strip extends outside the box: none for inside, half for center, all for outside.
+  const out = (width: number) => (stroke.align === 'inside' ? 0 : stroke.align === 'center' ? width / 2 : width);
+  const x0 = rect.x - out(left);
+  const x1 = rect.x + rect.width + out(right);
+  const y0 = rect.y - out(top);
+  const y1 = rect.y + rect.height + out(bottom);
+  const strips = [
+    top ? [x0, y0, x1 - x0, top] : null,
+    bottom ? [x0, y1 - bottom, x1 - x0, bottom] : null,
+    left ? [x0, y0, left, y1 - y0] : null,
+    right ? [x1 - right, y0, right, y1 - y0] : null,
+  ].filter((strip): strip is number[] => strip !== null);
+  return strips
+    .map(([x = 0, y = 0, width = 0, height = 0]) => `<rect x="${num(x)}" y="${num(y)}" width="${num(width)}" height="${num(height)}" ${colorAttrs('fill', stroke.color)}/>`)
+    .join('');
 }
 
 /** Offsets a rect/ellipse outline by `amount` on every side (negative shrinks). */

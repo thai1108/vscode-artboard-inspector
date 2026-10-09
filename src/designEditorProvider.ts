@@ -1,34 +1,34 @@
 import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import type { DesignDocument } from './document.ts';
+import { openDesignDocument } from './openDocument.ts';
 import { parseWebviewMessage, type HostMessage, type ImagePayload } from './protocol.ts';
-import { XdDocument } from './xd/parse.ts';
-import { ZipArchive } from './zip.ts';
 
 const RELOAD_DEBOUNCE_MS = 500;
 const MAX_FILE_SIZE = 300 * 1024 * 1024;
 
-async function readXd(uri: vscode.Uri): Promise<XdDocument> {
+async function readDesign(uri: vscode.Uri): Promise<DesignDocument> {
   const { size } = await vscode.workspace.fs.stat(uri);
   if (size > MAX_FILE_SIZE) {
     throw new Error(`File is too large to open (${Math.round(size / 1024 / 1024)} MB; limit ${MAX_FILE_SIZE / 1024 / 1024} MB)`);
   }
   const bytes = await vscode.workspace.fs.readFile(uri);
-  return XdDocument.open(ZipArchive.open(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)));
+  return openDesignDocument(uri.path, Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 }
 
-/** The opened .xd file; re-reads itself when the file changes on disk (e.g. a designer drops a new version). */
-class XdCustomDocument implements vscode.CustomDocument {
+/** The opened .xd/.fig file; re-reads itself when the file changes on disk (e.g. a designer drops a new version). */
+class DesignCustomDocument implements vscode.CustomDocument {
   readonly uri: vscode.Uri;
-  private current: XdDocument;
+  private current: DesignDocument;
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changed.event;
   private readonly watcher: vscode.FileSystemWatcher;
   private reloadTimer: NodeJS.Timeout | undefined;
 
-  private constructor(uri: vscode.Uri, xd: XdDocument) {
+  private constructor(uri: vscode.Uri, design: DesignDocument) {
     this.uri = uri;
-    this.current = xd;
+    this.current = design;
     this.watcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(vscode.Uri.joinPath(uri, '..'), path.posix.basename(uri.path)),
     );
@@ -36,11 +36,11 @@ class XdCustomDocument implements vscode.CustomDocument {
     this.watcher.onDidCreate(() => this.scheduleReload());
   }
 
-  static async load(uri: vscode.Uri): Promise<XdCustomDocument> {
-    return new XdCustomDocument(uri, await readXd(uri));
+  static async load(uri: vscode.Uri): Promise<DesignCustomDocument> {
+    return new DesignCustomDocument(uri, await readDesign(uri));
   }
 
-  get xd(): XdDocument {
+  get design(): DesignDocument {
     return this.current;
   }
 
@@ -51,7 +51,7 @@ class XdCustomDocument implements vscode.CustomDocument {
 
   private async reload(): Promise<void> {
     try {
-      this.current = await readXd(this.uri);
+      this.current = await readDesign(this.uri);
       this.changed.fire();
     } catch (error) {
       void vscode.window.showWarningMessage(
@@ -67,26 +67,30 @@ class XdCustomDocument implements vscode.CustomDocument {
   }
 }
 
-export class XdEditorProvider implements vscode.CustomReadonlyEditorProvider<XdCustomDocument> {
-  static readonly viewType = 'artboardInspector.xd';
+export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider<DesignCustomDocument> {
+  /** One provider serves both editors declared in package.json. */
+  static readonly viewTypes = ['artboardInspector.xd', 'artboardInspector.fig'];
   private readonly extensionUri: vscode.Uri;
 
   private constructor(extensionUri: vscode.Uri) {
     this.extensionUri = extensionUri;
   }
 
-  static register(context: vscode.ExtensionContext): vscode.Disposable {
-    return vscode.window.registerCustomEditorProvider(XdEditorProvider.viewType, new XdEditorProvider(context.extensionUri), {
-      webviewOptions: { retainContextWhenHidden: true },
-      supportsMultipleEditorsPerDocument: true,
-    });
+  static register(context: vscode.ExtensionContext): vscode.Disposable[] {
+    const provider = new DesignEditorProvider(context.extensionUri);
+    return DesignEditorProvider.viewTypes.map((viewType) =>
+      vscode.window.registerCustomEditorProvider(viewType, provider, {
+        webviewOptions: { retainContextWhenHidden: true },
+        supportsMultipleEditorsPerDocument: true,
+      }),
+    );
   }
 
-  openCustomDocument(uri: vscode.Uri): Promise<XdCustomDocument> {
-    return XdCustomDocument.load(uri);
+  openCustomDocument(uri: vscode.Uri): Promise<DesignCustomDocument> {
+    return DesignCustomDocument.load(uri);
   }
 
-  resolveCustomEditor(document: XdCustomDocument, panel: vscode.WebviewPanel): void {
+  resolveCustomEditor(document: DesignCustomDocument, panel: vscode.WebviewPanel): void {
     const { webview } = panel;
     const dist = vscode.Uri.joinPath(this.extensionUri, 'dist');
     const media = vscode.Uri.joinPath(this.extensionUri, 'media');
@@ -95,7 +99,7 @@ export class XdEditorProvider implements vscode.CustomReadonlyEditorProvider<XdC
 
     const post = (message: HostMessage) => void webview.postMessage(message);
     const postDocument = () =>
-      post({ type: 'document', fileName: path.posix.basename(document.uri.path), artboards: [...document.xd.artboards] });
+      post({ type: 'document', fileName: path.posix.basename(document.uri.path), artboards: [...document.design.artboards] });
 
     const subscriptions: vscode.Disposable[] = [
       document.onDidChange(postDocument),
@@ -106,7 +110,7 @@ export class XdEditorProvider implements vscode.CustomReadonlyEditorProvider<XdC
             postDocument();
             break;
           case 'loadArtboard':
-            post(loadArtboard(document.xd, message.id, new Set(message.knownImages)));
+            post(loadArtboard(document.design, message.id, new Set(message.knownImages)));
             break;
           case 'copy':
             void vscode.env.clipboard.writeText(message.text);
@@ -119,12 +123,12 @@ export class XdEditorProvider implements vscode.CustomReadonlyEditorProvider<XdC
   }
 }
 
-function loadArtboard(xd: XdDocument, id: string, knownImages: Set<string>): HostMessage {
+function loadArtboard(design: DesignDocument, id: string, knownImages: Set<string>): HostMessage {
   try {
-    const scene = xd.scene(id);
+    const scene = design.scene(id);
     const images: ImagePayload[] = [];
     for (const uid of scene.imageUids) {
-      const image = knownImages.has(uid) ? undefined : xd.image(uid);
+      const image = knownImages.has(uid) ? undefined : design.image(uid);
       if (image) {
         images.push({ uid, mime: image.mime, data: image.data });
       }

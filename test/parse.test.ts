@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AgcNode } from '../src/xd/agc.ts';
-import { effectiveRanges, fontWeight, XdDocument } from '../src/xd/parse.ts';
-import type { GroupNode, ShapeNode, TextNode } from '../src/xd/scene.ts';
+import { fontWeight } from '../src/scene/text.ts';
+import { effectiveRanges, XdDocument } from '../src/xd/parse.ts';
+import type { GroupNode, ShapeNode, TextNode } from '../src/scene/scene.ts';
 import { ZipArchive } from '../src/zip.ts';
 import { buildXd, PNG_BYTES, rgb } from './support/xdFixture.ts';
 import { writeZip } from './support/zipWriter.ts';

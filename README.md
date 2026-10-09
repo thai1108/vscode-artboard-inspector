@@ -2,22 +2,31 @@
 
 ![Selecting a layer and measuring the gap to its neighbour](images/screenshot.png)
 
-Open Adobe XD (`.xd`) files in VS Code and inspect them like a developer handoff tool.
+Open Adobe XD (`.xd`) files and Figma local copies (`.fig`) in VS Code and inspect them like a developer handoff tool.
 
 - Artboard list with filter, layer tree, zoom/pan canvas
 - Click a layer to see position, size, fill, border, radius, shadow, typography and generated CSS; click any value to copy it
 - With a layer selected, hover another one (or the artboard background) to see the spacing redlines
-- Reloads automatically when the `.xd` file changes on disk
+- Reloads automatically when the file changes on disk
 - Fully offline: the file is unzipped and rendered locally, nothing is uploaded
 
 ![Inspecting a text layer: typography, insets to the parent and CSS](images/inspect-text.png)
 
-## Install
+## Figma files (.fig)
+
+In Figma choose **File → Save local copy…** and open the downloaded `.fig` file in VS Code. Every top-level frame
+(also frames inside sections) becomes an artboard, listed as `Page / Section / Frame`. The file is decoded and drawn
+locally — no Figma account, token or network access is needed.
+
+## Build from source
+
+Requires Node.js 22.18 or later (the tests and scripts run TypeScript directly) and pnpm 10.
 
 ```bash
+corepack enable                    # provides the pnpm version pinned in package.json
 pnpm install
 pnpm package                       # runs all checks, writes artboard-inspector-<version>.vsix
-code --install-extension artboard-inspector-0.1.0.vsix
+code --install-extension artboard-inspector-0.2.0.vsix
 ```
 
 ## Shortcuts (canvas focused)
@@ -41,15 +50,17 @@ code --install-extension artboard-inspector-0.1.0.vsix
 - Files larger than 300 MB, or with more than 50,000 layers per artboard, are refused or cut off (with a notice) to
   keep VS Code responsive.
 - Blur and background-blur effects are not rendered (listed under "Not rendered" in the artboard inspector).
-- Figma files are not supported.
+- Figma: layers are redrawn from the file, so they can differ slightly from Figma itself. Layers with several fills
+  show only the top one, angular/diamond gradients are drawn as radial ones, and FigJam objects (stickies, widgets)
+  are listed as unsupported. Only `.fig` local copies are read — Figma links are not.
 
 ## Development
 
 ```bash
 pnpm watch                            # rebuild on change, then F5 in VS Code to launch the extension host
 pnpm check                            # type-check, lint, tests, build
-pnpm smoke <file.xd>...               # parse and render every artboard, print warnings
-pnpm preview <file.xd> <out-dir>      # static browser copy of the webview for UI checks
+pnpm smoke <file.xd|file.fig>...     # parse and render every artboard, print warnings
+pnpm preview <file.xd|file.fig> <dir> # static browser copy of the webview for UI checks
 pnpm sample <out.xd>                  # write an original demo design (used for the screenshots above)
 ```
 
@@ -57,5 +68,6 @@ pnpm sample <out.xd>                  # write an original demo design (used for 
 
 ## Trademarks
 
-Adobe XD is a trademark of Adobe Inc. This project is an independent viewer for `.xd` files and is not affiliated
-with, sponsored or endorsed by Adobe. The icon is original artwork.
+Adobe XD is a trademark of Adobe Inc. Figma is a trademark of Figma, Inc. This project is an independent viewer for
+`.xd` and `.fig` files and is not affiliated with, sponsored or endorsed by Adobe or Figma. The icon is original
+artwork.

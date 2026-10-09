@@ -1,19 +1,18 @@
 // Builds a static copy of the webview for a given .xd file so the UI can be checked in a normal browser:
-// `pnpm preview <file.xd> <out-dir>` then serve <out-dir> over HTTP. The output contains the design data,
+// `pnpm preview <file.xd|file.fig> <out-dir>` then serve <out-dir> over HTTP. The output contains the design data,
 // so write it outside the repository.
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { XdDocument } from '../src/xd/parse.ts';
-import { ZipArchive } from '../src/zip.ts';
+import { openDesignDocument } from '../src/openDocument.ts';
 
 const [file, outDir] = process.argv.slice(2);
 if (!file || !outDir) {
-  console.error('usage: pnpm preview <file.xd> <out-dir>');
+  console.error('usage: pnpm preview <file.xd|file.fig> <out-dir>');
   process.exit(2);
 }
 
 const root = path.resolve(import.meta.dirname, '..');
-const doc = XdDocument.open(ZipArchive.open(readFileSync(file)));
+const doc = openDesignDocument(file, readFileSync(file));
 mkdirSync(path.join(outDir, 'data'), { recursive: true });
 mkdirSync(path.join(outDir, 'img'), { recursive: true });
 

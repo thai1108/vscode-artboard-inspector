@@ -2,7 +2,7 @@ import type { HostMessage, ImagePayload } from '../protocol.ts';
 import { measureBetween, type Guide } from '../render/measure.ts';
 import { renderArtboardSvg } from '../render/svg.ts';
 import { fmt, type Box } from '../render/geometry.ts';
-import type { ArtboardScene, ArtboardSummary, SceneNode } from '../xd/scene.ts';
+import type { ArtboardScene, ArtboardSummary, SceneNode } from '../scene/scene.ts';
 import { indexScene, measureLayers, type IndexedNode } from './bounds.ts';
 import { escapeHtml } from '../render/html.ts';
 import { byId } from './dom.ts';

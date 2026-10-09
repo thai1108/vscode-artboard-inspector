@@ -1,12 +1,14 @@
-import type { SceneNode } from '../xd/scene.ts';
+import type { SceneNode } from '../scene/scene.ts';
 import { escapeHtml } from '../render/html.ts';
+
+const ROLE_LABELS = { frame: 'Frame', component: 'Component', instance: 'Instance', repeatGrid: 'Repeat grid' } as const;
 
 export function kindLabel(node: SceneNode): string {
   switch (node.kind) {
     case 'text':
       return 'Text';
     case 'group':
-      return node.role === 'component' ? 'Component' : node.role === 'repeatGrid' ? 'Repeat grid' : node.clip ? 'Mask group' : 'Group';
+      return node.role === 'group' ? (node.clip ? 'Mask group' : 'Group') : ROLE_LABELS[node.role];
     case 'shape':
       switch (node.geometry.type) {
         case 'rect':
@@ -26,7 +28,7 @@ function icon(node: SceneNode): string {
     case 'text':
       return 'T';
     case 'group':
-      return node.role === 'component' ? '◈' : node.role === 'repeatGrid' ? '▦' : '▣';
+      return { frame: '#', component: '◈', instance: '◇', repeatGrid: '▦', group: '▣' }[node.role];
     case 'shape':
       if (node.fill?.kind === 'image') {
         return '▨';

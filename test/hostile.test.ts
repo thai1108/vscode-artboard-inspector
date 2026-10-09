@@ -5,7 +5,7 @@ import { renderArtboardSvg } from '../src/render/svg.ts';
 import type { AgcNode } from '../src/xd/agc.ts';
 import { parseAgcColor } from '../src/xd/color.ts';
 import { SCENE_LIMITS, toStroke } from '../src/xd/parse.ts';
-import type { GroupNode, SceneNode, Stroke, TextNode } from '../src/xd/scene.ts';
+import type { GroupNode, SceneNode, Stroke, TextNode } from '../src/scene/scene.ts';
 import { ZipArchive } from '../src/zip.ts';
 import { artboard, shape, stroke } from './support/sceneBuilders.ts';
 import { buildXd } from './support/xdFixture.ts';

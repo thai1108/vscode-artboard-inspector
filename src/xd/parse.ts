@@ -1,3 +1,6 @@
+import type { DesignDocument, DesignImage } from '../document.ts';
+import { sniffImageMime } from '../image.ts';
+import { fontWeight } from '../scene/text.ts';
 import type { ZipArchive } from '../zip.ts';
 import type {
   AgcArtboardNode,
@@ -16,8 +19,9 @@ import type {
   XdBounds,
   XdManifestNode,
 } from './agc.ts';
-import { BLACK, parseAgcColor } from './color.ts';
-import { multiply, translate } from './matrix.ts';
+import { BLACK } from '../scene/color.ts';
+import { parseAgcColor } from './color.ts';
+import { multiply, translate } from '../scene/matrix.ts';
 import type {
   ArtboardScene,
   ArtboardSummary,
@@ -35,7 +39,7 @@ import type {
   TextRun,
   TextStyle,
   TextTransform,
-} from './scene.ts';
+} from '../scene/scene.ts';
 
 const RESOURCES_AGC = 'resources/graphics/graphicContent.agc';
 
@@ -56,17 +60,12 @@ const STROKE_JOINS = new Set(['miter', 'round', 'bevel']);
 const STROKE_ALIGNS = new Set(['inside', 'center', 'outside']);
 const TEXT_ALIGNS = new Set(['left', 'center', 'right', 'justify']);
 
-export interface XdImage {
-  mime: string;
-  data: Uint8Array;
-}
-
 interface ArtboardEntry extends ArtboardSummary {
   bounds: XdBounds;
 }
 
 /** An opened .xd file: lists artboards and converts one artboard at a time into a scene. */
-export class XdDocument {
+export class XdDocument implements DesignDocument {
   readonly artboards: readonly ArtboardSummary[];
   /** Problems found while reading the manifest, shown with every artboard. */
   readonly warnings: readonly string[];
@@ -136,7 +135,7 @@ export class XdDocument {
     };
   }
 
-  image(uid: string): XdImage | undefined {
+  image(uid: string): DesignImage | undefined {
     const path = `resources/${uid}`;
     if (!/^[\w-]+$/.test(uid) || !this.zip.has(path)) {
       return undefined;
@@ -206,16 +205,6 @@ function toBounds(raw: unknown): XdBounds | null {
     return null;
   }
   return { x, y, width, height };
-}
-
-function sniffImageMime(data: Uint8Array): string {
-  const ascii = (start: number, end: number) => String.fromCharCode(...data.subarray(start, end));
-  if (data[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
-  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return 'image/jpeg';
-  if (ascii(0, 3) === 'GIF') return 'image/gif';
-  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
-  if (/^\s*<(\?xml|svg)/.test(ascii(0, 64))) return 'image/svg+xml';
-  return 'application/octet-stream';
 }
 
 class SceneBuilder {
@@ -347,6 +336,7 @@ class SceneBuilder {
       ...this.base(node),
       kind: 'group',
       role: ux?.symbolId ? 'component' : ux?.repeatGrid ? 'repeatGrid' : 'group',
+      frame: null,
       clip: clip.length ? clip : null,
       children: this.children(node.group?.children, undefined, depth + 1),
     };
@@ -617,25 +607,6 @@ export function effectiveRanges(ranges: AgcRangedStyle[], textLength: number): T
     last.to = textLength;
   }
   return out;
-}
-
-const WEIGHT_NAMES: [RegExp, number][] = [
-  [/thin|hairline/i, 100],
-  [/(extra|ultra)[\s-]?light/i, 200],
-  [/light/i, 300],
-  [/(semi|demi)[\s-]?bold/i, 600],
-  [/(extra|ultra)[\s-]?bold/i, 800],
-  [/black|heavy/i, 900],
-  [/bold/i, 700],
-  [/medium/i, 500],
-];
-
-export function fontWeight(style: string): number {
-  const hiragino = /^W(\d)$/i.exec(style.trim());
-  if (hiragino) {
-    return Math.max(100, Number(hiragino[1]) * 100);
-  }
-  return WEIGHT_NAMES.find(([pattern]) => pattern.test(style))?.[1] ?? 400;
 }
 
 function toTextTransform(value: string | undefined): TextTransform {
