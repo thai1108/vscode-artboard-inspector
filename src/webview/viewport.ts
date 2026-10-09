@@ -1,7 +1,9 @@
-const MIN_ZOOM = 0.05;
+const MIN_ZOOM = 0.01;
 const MAX_ZOOM = 32;
 const PADDING = 40;
 const ZOOM_STEP = 1.25;
+/** Elements that are content (clicks select) rather than empty canvas (drags pan). */
+const CONTENT_SELECTOR = '.dv-artboard, .dv-board-item, .dv-board-title';
 
 /** Zoom/pan of the artboard inside the stage; `x`/`y` are the screen offset of the artboard's top-left corner. */
 export class Viewport {
@@ -44,6 +46,31 @@ export class Viewport {
     this.x = (this.host.clientWidth - this.contentWidth * this.zoom) / 2;
     this.y = (this.host.clientHeight - this.contentHeight * this.zoom) / 2;
     this.apply();
+  }
+
+  /** Fits a content-space box in the stage (never above 100%) and centres it. */
+  fitBox(box: { x: number; y: number; width: number; height: number }): void {
+    const zoomX = (this.host.clientWidth - PADDING * 2) / Math.max(1, box.width);
+    const zoomY = (this.host.clientHeight - PADDING * 2) / Math.max(1, box.height);
+    this.zoom = clampZoom(Math.min(1, zoomX, zoomY));
+    this.x = this.host.clientWidth / 2 - (box.x + box.width / 2) * this.zoom;
+    this.y = this.host.clientHeight / 2 - (box.y + box.height / 2) * this.zoom;
+    this.apply();
+  }
+
+  setView(x: number, y: number, zoom: number): void {
+    this.zoom = clampZoom(zoom);
+    this.x = x;
+    this.y = y;
+    this.apply();
+  }
+
+  get stageWidth(): number {
+    return this.host.clientWidth;
+  }
+
+  get stageHeight(): number {
+    return this.host.clientHeight;
   }
 
   actualSize(): void {
@@ -114,7 +141,7 @@ export class Viewport {
 
     let drag: { pointerId: number; startX: number; startY: number; originX: number; originY: number } | null = null;
     this.host.addEventListener('pointerdown', (event) => {
-      const onArtboard = (event.target as Element).closest('.dv-artboard') !== null;
+      const onArtboard = (event.target as Element).closest(CONTENT_SELECTOR) !== null;
       if (event.button === 1 || (event.button === 0 && (this.spaceDown || !onArtboard))) {
         drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, originX: this.x, originY: this.y };
         this.dragMoved = false;

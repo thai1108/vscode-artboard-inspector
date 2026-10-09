@@ -3,6 +3,8 @@ import type { WebviewMessage } from '../protocol.ts';
 export interface ViewerState {
   artboardId?: string;
   sidebarHidden?: boolean;
+  mode?: 'artboard' | 'board';
+  boardPage?: number;
 }
 
 interface VsCodeApi {

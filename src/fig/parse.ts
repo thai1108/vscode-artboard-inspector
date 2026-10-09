@@ -1,4 +1,5 @@
 import type { DesignDocument, DesignImage } from '../document.ts';
+import type { BoardLayout } from '../scene/board.ts';
 import { imageSize, sniffImageMime } from '../image.ts';
 import type {
   ArtboardScene,
@@ -51,6 +52,8 @@ interface FigArtboard extends ArtboardSummary {
   pageIndex: number;
   x: number;
   y: number;
+  /** Name without the page prefix. */
+  title: string;
 }
 
 export function guidKey(guid: FigGuid | undefined): string {
@@ -60,6 +63,7 @@ export function guidKey(guid: FigGuid | undefined): string {
 /** An opened .fig file ("Save local copy" in Figma): pages' top-level frames are the artboards. */
 export class FigDocument implements DesignDocument {
   readonly artboards: readonly ArtboardSummary[];
+  readonly board: BoardLayout;
   private readonly file: FigFile;
   readonly nodes: ReadonlyMap<string, FigNode>;
   private readonly childLists: ReadonlyMap<string, FigNode[]>;
@@ -92,9 +96,13 @@ export class FigDocument implements DesignDocument {
     this.nodes = nodes;
     this.childLists = childLists;
     this.blobs = (file.message.blobs ?? []).map((blob) => blob.bytes ?? new Uint8Array());
-    const entries = this.collectArtboards();
+    const { pages, artboards: entries } = this.collectArtboards();
     this.entries = new Map(entries.map((entry) => [entry.id, entry]));
     this.artboards = entries.map(({ id, name, width, height }) => ({ id, name, width, height }));
+    this.board = {
+      pages,
+      placements: entries.map(({ id, pageIndex, x, y, title }) => ({ id, page: pageIndex, x, y, title })),
+    };
   }
 
   static open(bytes: Buffer, limits: FigLimits = DEFAULT_FIG_LIMITS): FigDocument {
@@ -124,7 +132,7 @@ export class FigDocument implements DesignDocument {
     return this.image(uid)?.data;
   }
 
-  private collectArtboards(): FigArtboard[] {
+  private collectArtboards(): { pages: string[]; artboards: FigArtboard[] } {
     const root = this.nodes.get('0:0') ?? [...this.nodes.values()].find((node) => node.type === 'DOCUMENT');
     if (!root) {
       throw new Error('Not a Figma design file (document root missing)');
@@ -148,6 +156,7 @@ export class FigDocument implements DesignDocument {
           artboards.push({
             id: guidKey(child.guid),
             name: [...path, name].join(' / '),
+            title: [...path.slice(1), name].join(' / '),
             ...sizeOf(child),
             pageIndex,
             x,
@@ -156,8 +165,9 @@ export class FigDocument implements DesignDocument {
         }
       }
     };
+    const pageNames = pages.map((page, index) => (page.name ?? '').trim() || `Page ${index + 1}`);
     pages.forEach((page, index) => visit(page, [(page.name ?? '').trim()], 0, 0, index, 0));
-    return artboards.sort((p, q) => p.pageIndex - q.pageIndex || p.y - q.y || p.x - q.x);
+    return { pages: pageNames, artboards: artboards.sort((p, q) => p.pageIndex - q.pageIndex || p.y - q.y || p.x - q.x) };
   }
 }
 

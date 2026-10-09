@@ -1,6 +1,6 @@
 import { geometryElement } from '../render/svg.ts';
 import { intersect, union, type Box } from '../render/geometry.ts';
-import type { ArtboardScene, SceneNode, ShapeNode, TextNode } from '../scene/scene.ts';
+import type { ArtboardScene, Geometry, SceneNode, ShapeNode, TextNode } from '../scene/scene.ts';
 
 // Noto Sans ascender/descender: XD sizes text boxes from the baseline with these, not from the glyphs drawn.
 const ASCENT = 1.069;
@@ -57,7 +57,7 @@ export function measureLayers(svg: SVGSVGElement, scene: ArtboardScene): Measure
       case 'group': {
         box = union(node.children.map(measure).filter((child): child is Box => child !== null));
         if (box && node.clip) {
-          const clip = union(node.clip.map((shape) => clipShapeBox(element, shape)));
+          const clip = union(node.clip.map((shape) => clipShapeBox(element, ctm, shape)));
           box = clip ? intersect(box, clip) : box;
         }
         break;
@@ -100,9 +100,16 @@ function textLocalBox(element: SVGGElement, node: TextNode): Box {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-/** Clip shapes live in <clipPath> and are never rendered, so measure a temporary copy inside the group. */
-function clipShapeBox(group: SVGGElement, shape: ShapeNode): Box {
+/**
+ * Clip shapes live in <clipPath> and are never rendered. Rects, ellipses and lines are measured from their geometry;
+ * paths need a temporary copy inside the group (a DOM change, so it forces a relayout — keep it the exception).
+ */
+function clipShapeBox(group: SVGGElement, groupCtm: Affine, shape: ShapeNode): Box {
   const { a, b, c, d, e, f } = shape.transform;
+  const local = geometryBox(shape.geometry);
+  if (local) {
+    return transformBox(multiply(groupCtm, shape.transform), local);
+  }
   group.insertAdjacentHTML('beforeend', geometryElement(shape.geometry, `transform="matrix(${a} ${b} ${c} ${d} ${e} ${f})" visibility="hidden"`));
   const probe = group.lastElementChild as SVGGraphicsElement;
   const ctm = probe.getCTM();
@@ -111,7 +118,37 @@ function clipShapeBox(group: SVGGElement, shape: ShapeNode): Box {
   return box;
 }
 
-function transformBox(m: DOMMatrix, box: Box): Box {
+function geometryBox(geometry: Geometry): Box | null {
+  switch (geometry.type) {
+    case 'rect':
+      return { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height };
+    case 'ellipse':
+      return { x: geometry.cx - geometry.rx, y: geometry.cy - geometry.ry, width: geometry.rx * 2, height: geometry.ry * 2 };
+    case 'line': {
+      const x = Math.min(geometry.x1, geometry.x2);
+      const y = Math.min(geometry.y1, geometry.y2);
+      return { x, y, width: Math.abs(geometry.x2 - geometry.x1), height: Math.abs(geometry.y2 - geometry.y1) };
+    }
+    case 'path':
+      return null;
+  }
+}
+
+/** getCTM() returns an SVGMatrix, whose multiply() only accepts another SVGMatrix, so compose by hand. */
+type Affine = Pick<DOMMatrixReadOnly, 'a' | 'b' | 'c' | 'd' | 'e' | 'f'>;
+
+function multiply(m: Affine, n: Affine): Affine {
+  return {
+    a: m.a * n.a + m.c * n.b,
+    b: m.b * n.a + m.d * n.b,
+    c: m.a * n.c + m.c * n.d,
+    d: m.b * n.c + m.d * n.d,
+    e: m.a * n.e + m.c * n.f + m.e,
+    f: m.b * n.e + m.d * n.f + m.f,
+  };
+}
+
+function transformBox(m: Affine, box: Box): Box {
   const corners = [
     [box.x, box.y],
     [box.x + box.width, box.y],

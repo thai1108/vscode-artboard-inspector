@@ -1,4 +1,5 @@
 import type { DesignDocument, DesignImage } from '../document.ts';
+import type { BoardLayout } from '../scene/board.ts';
 import { sniffImageMime } from '../image.ts';
 import { fontWeight } from '../scene/text.ts';
 import type { ZipArchive } from '../zip.ts';
@@ -67,6 +68,7 @@ interface ArtboardEntry extends ArtboardSummary {
 /** An opened .xd file: lists artboards and converts one artboard at a time into a scene. */
 export class XdDocument implements DesignDocument {
   readonly artboards: readonly ArtboardSummary[];
+  readonly board: BoardLayout;
   /** Problems found while reading the manifest, shown with every artboard. */
   readonly warnings: readonly string[];
   private readonly zip: ZipArchive;
@@ -78,6 +80,10 @@ export class XdDocument implements DesignDocument {
     this.zip = zip;
     this.entries = new Map(entries.map((entry) => [entry.id, entry]));
     this.artboards = entries.map(({ id, name, width, height }) => ({ id, name, width, height }));
+    this.board = {
+      pages: ['Canvas'],
+      placements: entries.map(({ id, name, bounds }) => ({ id, page: 0, x: bounds.x, y: bounds.y, title: name })),
+    };
     this.warnings = warnings;
   }
 
