@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseAgcColor, toCssColor, toHex } from '../src/xd/color.ts';
+import { toCssColor, toHex } from '../src/scene/color.ts';
+import { parseAgcColor } from '../src/xd/color.ts';
 
 describe('colors', () => {
   it('parses RGB objects with alpha and packed ARGB integers', () => {

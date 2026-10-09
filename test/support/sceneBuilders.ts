@@ -1,4 +1,4 @@
-import type { ArtboardScene, GroupNode, Matrix, SceneNode, ShapeNode, Stroke, TextNode, TextStyle } from '../../src/xd/scene.ts';
+import type { ArtboardScene, GroupNode, Matrix, SceneNode, ShapeNode, Stroke, TextNode, TextStyle } from '../../src/scene/scene.ts';
 
 const IDENTITY: Matrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 let nextKey = 0;
@@ -47,7 +47,7 @@ export function text(overrides: Partial<TextNode> = {}): TextNode {
 }
 
 export function group(children: SceneNode[], overrides: Partial<GroupNode> = {}): GroupNode {
-  return { ...base(overrides), kind: 'group', role: 'group', clip: null, children, ...overrides };
+  return { ...base(overrides), kind: 'group', role: 'group', frame: null, clip: null, children, ...overrides };
 }
 
 export function artboard(children: SceneNode[], overrides: Partial<ArtboardScene> = {}): ArtboardScene {

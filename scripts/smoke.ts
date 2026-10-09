@@ -1,21 +1,20 @@
-// Parses every artboard of the given .xd files and reports conversion warnings: `pnpm smoke <file.xd>...`
+// Parses every artboard of the given design files and reports conversion warnings: `pnpm smoke <file.xd|file.fig>...`
 import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
-import { XdDocument } from '../src/xd/parse.ts';
+import { openDesignDocument } from '../src/openDocument.ts';
 import { renderArtboardSvg } from '../src/render/svg.ts';
-import type { SceneNode } from '../src/xd/scene.ts';
-import { ZipArchive } from '../src/zip.ts';
+import type { SceneNode } from '../src/scene/scene.ts';
 
 const files = process.argv.slice(2);
 if (!files.length) {
-  console.error('usage: pnpm smoke <file.xd>...');
+  console.error('usage: pnpm smoke <file.xd|file.fig>...');
   process.exit(2);
 }
 
 let failed = false;
 for (const file of files) {
   const started = performance.now();
-  const doc = XdDocument.open(ZipArchive.open(readFileSync(file)));
+  const doc = openDesignDocument(file, readFileSync(file));
   console.log(`${file}: ${doc.artboards.length} artboards (opened in ${(performance.now() - started).toFixed(0)} ms)`);
   for (const artboard of doc.artboards) {
     try {

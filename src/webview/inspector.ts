@@ -1,7 +1,7 @@
 import { cssForNode, borderRadius, shadowValue } from '../render/css.ts';
 import { fmt, type Box } from '../render/geometry.ts';
-import { roundAlpha, toCssColor, toHex } from '../xd/color.ts';
-import type { ArtboardScene, Paint, Rgba, SceneNode, Stroke, TextNode, TextStyle } from '../xd/scene.ts';
+import { roundAlpha, toCssColor, toHex } from '../scene/color.ts';
+import type { ArtboardScene, Paint, Rgba, SceneNode, Stroke, TextNode, TextStyle } from '../scene/scene.ts';
 import { escapeHtml } from '../render/html.ts';
 import { fontsUsed, isFontAvailable } from './fonts.ts';
 import { displayName, kindLabel } from './layers.ts';
@@ -68,12 +68,13 @@ function nodeInspector(ctx: InspectorContext, node: SceneNode): string {
   if (node.kind === 'text') {
     parts.push(textSections(node));
   }
-  if (node.kind === 'shape') {
-    if (node.fill) {
-      parts.push(section('Fill', paintValue(node.fill)));
+  const paints = node.kind === 'shape' ? node : node.kind === 'group' ? node.frame : null;
+  if (paints) {
+    if (paints.fill) {
+      parts.push(section('Fill', paintValue(paints.fill)));
     }
-    if (node.stroke) {
-      parts.push(section('Border', strokeValue(node.stroke)));
+    if (paints.stroke) {
+      parts.push(section('Border', strokeValue(paints.stroke)));
     }
     const radius = borderRadius(node);
     if (radius) {
@@ -146,7 +147,8 @@ function paintValue(paint: Paint): string {
 }
 
 function strokeValue(stroke: Stroke): string {
-  const items = [prop('Width', copyable(fmt(stroke.width))), prop('Align', copyable(stroke.align)), prop('Color', colorValue(stroke.color))];
+  const width = stroke.sides ? stroke.sides.map(fmt).join(' ') : fmt(stroke.width);
+  const items = [prop(stroke.sides ? 'Width (T R B L)' : 'Width', copyable(width)), prop('Align', copyable(stroke.align)), prop('Color', colorValue(stroke.color))];
   if (stroke.dash.length) {
     items.push(prop('Dash', copyable(stroke.dash.map(fmt).join(' '))));
   }

@@ -1,4 +1,4 @@
-// Normalized, renderer-friendly scene built from an XD artboard. Shared by the extension host and the webview,
+// Normalized, renderer-friendly scene built from an XD artboard or a Figma frame. Shared by the extension host and the webview,
 // so it must stay plain JSON (it is posted to the webview as-is).
 
 /** 2D affine matrix in SVG order: [a c e; b d f]. */
@@ -64,7 +64,10 @@ export type StrokeAlign = 'inside' | 'center' | 'outside';
 
 export interface Stroke {
   color: Rgba;
+  /** The widest side when `sides` is set. */
   width: number;
+  /** Per-side widths [top, right, bottom, left] for boxes whose sides differ (Figma frames). */
+  sides?: [number, number, number, number];
   align: StrokeAlign;
   dash: number[];
   cap: 'butt' | 'round' | 'square';
@@ -108,6 +111,8 @@ export interface LineGeometry {
 export interface PathGeometry {
   type: 'path';
   d: string;
+  /** Defaults to evenodd, which is what XD outlines expect. */
+  fillRule?: 'nonzero' | 'evenodd';
 }
 
 export type Geometry = RectGeometry | EllipseGeometry | LineGeometry | PathGeometry;
@@ -135,6 +140,8 @@ export interface TextRun {
   style: number;
   /** Explicit start x; when absent the run continues after the previous one. */
   x?: number;
+  /** Explicit x of every character (one per code point), when the source laid the glyphs out itself. */
+  xs?: number[];
   /** Font XD fell back to for these glyphs, when it differs from the style's family. */
   glyphFont?: string;
 }
@@ -155,6 +162,8 @@ interface NodeBase {
   transform: Matrix;
   opacity: number;
   shadows: Shadow[];
+  /** Size of the layer's own box (Figma); bounds use it instead of measuring the drawn geometry. */
+  layoutSize?: { width: number; height: number };
 }
 
 export interface ShapeNode extends NodeBase {
@@ -162,6 +171,8 @@ export interface ShapeNode extends NodeBase {
   geometry: Geometry;
   fill: Paint | null;
   stroke: Stroke | null;
+  /** Precomputed outline of the stroke (Figma), drawn filled with the stroke color instead of stroking. */
+  strokeOutline?: string;
 }
 
 export interface TextNode extends NodeBase {
@@ -174,9 +185,21 @@ export interface TextNode extends NodeBase {
   frame: { type: 'positioned' | 'area'; width: number; height: number };
 }
 
+/** Own box styling of a container that paints itself (a Figma frame). */
+export interface FrameStyle {
+  width: number;
+  height: number;
+  /** [topLeft, topRight, bottomRight, bottomLeft] */
+  radii: [number, number, number, number];
+  fill: Paint | null;
+  stroke: Stroke | null;
+}
+
 export interface GroupNode extends NodeBase {
   kind: 'group';
-  role: 'group' | 'component' | 'repeatGrid';
+  role: 'group' | 'frame' | 'component' | 'instance' | 'repeatGrid';
+  /** Set for frames: they paint their own box and have a fixed size, unlike groups sized by their children. */
+  frame: FrameStyle | null;
   /** Mask shapes in the group's local space. */
   clip: ShapeNode[] | null;
   children: SceneNode[];

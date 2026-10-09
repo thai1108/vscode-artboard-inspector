@@ -1,5 +1,5 @@
-import { toCssColor } from '../xd/color.ts';
-import type { GradientStop, Paint, SceneNode, Shadow, Stroke, TextNode, TextStyle } from '../xd/scene.ts';
+import { toCssColor } from '../scene/color.ts';
+import type { GradientStop, Paint, SceneNode, Shadow, Stroke, TextNode, TextStyle } from '../scene/scene.ts';
 import { fmt, type Box } from './geometry.ts';
 
 export interface CssBlock {
@@ -25,13 +25,25 @@ export function cssForNode(node: SceneNode, box: Box): CssBlock[] {
         declarations.push(`background: ${backgroundValue(fill, box)};`);
       }
       if (stroke) {
-        const note = stroke.align === 'inside' ? '' : ` /* ${stroke.align} stroke */`;
-        declarations.push(`border: ${borderValue(stroke)};${note}`);
+        declarations.push(...borderDeclarations(stroke));
       }
       const radius = borderRadius(node);
       if (radius) {
         declarations.push(`border-radius: ${radius};`);
       }
+    }
+  }
+  if (node.kind === 'group' && node.frame) {
+    const { fill, stroke } = node.frame;
+    if (fill) {
+      declarations.push(`background: ${backgroundValue(fill, box)};`);
+    }
+    if (stroke) {
+      declarations.push(...borderDeclarations(stroke));
+    }
+    const radius = borderRadius(node);
+    if (radius) {
+      declarations.push(`border-radius: ${radius};`);
     }
   }
   if (node.shadows.length) {
@@ -114,8 +126,18 @@ function gradientStops(stops: GradientStop[]): string {
   return stops.map((stop) => `${toCssColor(stop.color)} ${fmt(stop.offset * 100)}%`).join(', ');
 }
 
-export function borderValue(stroke: Stroke): string {
-  return `${px(stroke.width)} ${stroke.dash.length ? 'dashed' : 'solid'} ${toCssColor(stroke.color)}`;
+export function borderValue(stroke: Stroke, width = stroke.width): string {
+  return `${px(width)} ${stroke.dash.length ? 'dashed' : 'solid'} ${toCssColor(stroke.color)}`;
+}
+
+/** `border: …` declarations, one per side when the sides differ. */
+function borderDeclarations(stroke: Stroke): string[] {
+  const note = stroke.align === 'inside' ? '' : ` /* ${stroke.align} stroke */`;
+  if (!stroke.sides) {
+    return [`border: ${borderValue(stroke)};${note}`];
+  }
+  const names = ['top', 'right', 'bottom', 'left'];
+  return stroke.sides.flatMap((width, i) => (width ? [`border-${names[i]}: ${borderValue(stroke, width)};${note}`] : []));
 }
 
 export function shadowValue(shadow: Shadow): string {
@@ -124,17 +146,15 @@ export function shadowValue(shadow: Shadow): string {
 
 /** CSS border-radius for a rect or circle, or null when the shape has square corners. */
 export function borderRadius(node: SceneNode): string | null {
-  if (node.kind !== 'shape') {
-    return null;
+  let rect: { width: number; height: number; radii: [number, number, number, number] };
+  if (node.kind === 'group' && node.frame) {
+    rect = node.frame;
+  } else if (node.kind === 'shape' && node.geometry.type === 'rect') {
+    rect = node.geometry;
+  } else {
+    return node.kind === 'shape' && node.geometry.type === 'ellipse' ? '50%' : null;
   }
-  const { geometry } = node;
-  if (geometry.type === 'ellipse') {
-    return '50%';
-  }
-  if (geometry.type !== 'rect') {
-    return null;
-  }
-  const radii = geometry.radii.map((r) => Math.min(r, geometry.width / 2, geometry.height / 2));
+  const radii = rect.radii.map((r) => Math.min(r, rect.width / 2, rect.height / 2));
   if (radii.every((r) => r === 0)) {
     return null;
   }
