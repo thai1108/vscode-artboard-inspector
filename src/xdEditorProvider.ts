@@ -63,7 +63,7 @@ class XdCustomDocument implements vscode.CustomDocument {
 }
 
 export class XdEditorProvider implements vscode.CustomReadonlyEditorProvider<XdCustomDocument> {
-  static readonly viewType = 'designViewer.xd';
+  static readonly viewType = 'artboardInspector.xd';
   private readonly extensionUri: vscode.Uri;
 
   private constructor(extensionUri: vscode.Uri) {
@@ -145,7 +145,7 @@ function webviewHtml(webview: vscode.Webview, script: vscode.Uri, style: vscode.
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="stylesheet" href="${webview.asWebviewUri(style).toString()}">
-<title>Design Viewer</title>
+<title>Artboard Inspector</title>
 </head>
 <body>
 <div id="app"></div>

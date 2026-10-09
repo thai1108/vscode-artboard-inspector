@@ -1,6 +1,6 @@
 {
-  "name": "design-viewer",
-  "displayName": "Design Viewer for XD Files",
+  "name": "artboard-inspector",
+  "displayName": "Artboard Inspector",
   "description": "View and inspect Adobe XD (.xd) files inside VS Code: artboards, layers, sizes, spacing, colors, fonts and CSS. Works offline.",
   "version": "0.1.0",
   "publisher": "thai1108",
@@ -12,11 +12,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/thai1108/vscode-design-viewer.git"
+    "url": "https://github.com/thai1108/vscode-artboard-inspector.git"
   },
-  "homepage": "https://github.com/thai1108/vscode-design-viewer#readme",
+  "homepage": "https://github.com/thai1108/vscode-artboard-inspector#readme",
   "bugs": {
-    "url": "https://github.com/thai1108/vscode-design-viewer/issues"
+    "url": "https://github.com/thai1108/vscode-artboard-inspector/issues"
   },
   "type": "module",
   "engines": {
@@ -40,8 +40,8 @@
   "contributes": {
     "customEditors": [
       {
-        "viewType": "designViewer.xd",
-        "displayName": "Design Viewer",
+        "viewType": "artboardInspector.xd",
+        "displayName": "Artboard Inspector",
         "selector": [
           {
             "filenamePattern": "*.xd"

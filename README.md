@@ -1,4 +1,4 @@
-# Design Viewer for XD Files
+# Artboard Inspector
 
 ![Selecting a layer and measuring the gap to its neighbour](images/screenshot.png)
 
@@ -16,8 +16,8 @@ Open Adobe XD (`.xd`) files in VS Code and inspect them like a developer handoff
 
 ```bash
 pnpm install
-pnpm package                       # runs all checks, writes design-viewer-<version>.vsix
-code --install-extension design-viewer-0.1.0.vsix
+pnpm package                       # runs all checks, writes artboard-inspector-<version>.vsix
+code --install-extension artboard-inspector-0.1.0.vsix
 ```
 
 ## Shortcuts (canvas focused)
