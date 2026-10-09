@@ -44,7 +44,7 @@ export function renderLayerTree(nodes: SceneNode[]): string {
   const items = [...nodes].reverse().map((node) => {
     const name = escapeHtml(displayName(node));
     const twisty = node.kind === 'group' && node.children.length ? '<span class="twisty" data-toggle></span>' : '<span class="twisty-space"></span>';
-    const row = `<div class="layer-row" data-key="${node.key}" title="${name}">${twisty}<span class="layer-icon">${icon(node)}</span><span class="layer-name">${name}</span></div>`;
+    const row = `<div class="layer-row" data-key="${escapeHtml(node.key)}" title="${name}">${twisty}<span class="layer-icon">${icon(node)}</span><span class="layer-name">${name}</span></div>`;
     const children = node.kind === 'group' && node.children.length ? renderLayerTree(node.children) : '';
     return `<li class="layer${children ? ' collapsed' : ''}">${row}${children}</li>`;
   });

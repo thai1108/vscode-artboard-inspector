@@ -8,7 +8,8 @@ export function parseAgcColor(color: AgcColor | undefined, fallback: Rgba = BLAC
   if (value === undefined) {
     return fallback;
   }
-  const alpha = color?.alpha ?? 1;
+  const rawAlpha = color?.alpha;
+  const alpha = typeof rawAlpha === 'number' && Number.isFinite(rawAlpha) ? Math.min(1, Math.max(0, rawAlpha)) : 1;
   if (typeof value === 'number') {
     return {
       r: (value >>> 16) & 0xff,
@@ -17,7 +18,11 @@ export function parseAgcColor(color: AgcColor | undefined, fallback: Rgba = BLAC
       a: (((value >>> 24) & 0xff) / 255) * alpha,
     };
   }
-  return { r: Math.round(value.r), g: Math.round(value.g), b: Math.round(value.b), a: alpha };
+  if (typeof value !== 'object' || value === null) {
+    return fallback;
+  }
+  const channel = (n: unknown) => (typeof n === 'number' && Number.isFinite(n) ? Math.min(255, Math.max(0, Math.round(n))) : 0);
+  return { r: channel(value.r), g: channel(value.g), b: channel(value.b), a: alpha };
 }
 
 function hex2(n: number): string {

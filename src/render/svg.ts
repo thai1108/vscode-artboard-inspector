@@ -55,7 +55,7 @@ class SvgWriter {
   }
 
   node(node: SceneNode): string {
-    const attrs = [`data-key="${node.key}"`];
+    const attrs = [`data-key="${escapeAttr(node.key)}"`];
     if (!isIdentity(node.transform)) {
       attrs.push(`transform="${matrix(node.transform)}"`);
     }
@@ -102,11 +102,11 @@ class SvgWriter {
     const path = `d="${escapeAttr(d)}" fill-rule="evenodd"`;
     const doubled = `fill="none" ${strokeAttrs(stroke, stroke.width * 2)}`;
     if (stroke.align === 'inside') {
-      const id = `dv-${key}-stroke-clip`;
+      const id = `dv-${idPart(key)}-stroke-clip`;
       this.defs.push(`<clipPath id="${id}"><path ${path}/></clipPath>`);
       return `<path ${path} ${doubled} clip-path="url(#${id})"/>`;
     }
-    const id = `dv-${key}-stroke-mask`;
+    const id = `dv-${idPart(key)}-stroke-mask`;
     const area = `x="${-HUGE}" y="${-HUGE}" width="${HUGE * 2}" height="${HUGE * 2}"`;
     this.defs.push(
       `<mask id="${id}" maskUnits="userSpaceOnUse" ${area}><rect ${area} fill="white"/><path ${path} fill="black"/></mask>`,
@@ -119,7 +119,7 @@ class SvgWriter {
     if (!node.clip) {
       return children;
     }
-    const id = `dv-${node.key}-clip`;
+    const id = `dv-${idPart(node.key)}-clip`;
     const shapes = node.clip
       .map((shape) => geometryElement(shape.geometry, isIdentity(shape.transform) ? '' : `transform="${matrix(shape.transform)}"`))
       .join('');
@@ -135,7 +135,7 @@ class SvgWriter {
       case 'solid':
         return colorAttrs('fill', paint.color);
       case 'linear': {
-        const id = `dv-${key}-fill`;
+        const id = `dv-${idPart(key)}-fill`;
         this.defs.push(
           `<linearGradient id="${id}" x1="${num(paint.x1)}" y1="${num(paint.y1)}" x2="${num(paint.x2)}" y2="${num(paint.y2)}">` +
             `${paint.stops.map(stopElement).join('')}</linearGradient>`,
@@ -143,7 +143,7 @@ class SvgWriter {
         return `fill="url(#${id})"`;
       }
       case 'radial': {
-        const id = `dv-${key}-fill`;
+        const id = `dv-${idPart(key)}-fill`;
         this.defs.push(
           `<radialGradient id="${id}" cx="${num(paint.cx)}" cy="${num(paint.cy)}" r="${num(paint.r)}" fx="${num(paint.fx)}" fy="${num(paint.fy)}">` +
             `${paint.stops.map(stopElement).join('')}</radialGradient>`,
@@ -155,7 +155,7 @@ class SvgWriter {
         if (!url) {
           return `fill="${MISSING_IMAGE_FILL}"`;
         }
-        const id = `dv-${key}-fill`;
+        const id = `dv-${idPart(key)}-fill`;
         const width = num(paint.width);
         const height = num(paint.height);
         const fit = paint.fit === 'contain' ? 'meet' : 'slice';
@@ -169,7 +169,7 @@ class SvgWriter {
   }
 
   private shadowFilter(key: string, shadows: Shadow[]): string {
-    const id = `dv-${key}-shadow`;
+    const id = `dv-${idPart(key)}-shadow`;
     const layers = shadows
       .map(
         (shadow, i) =>
@@ -295,10 +295,10 @@ function strokeAttrs(stroke: Stroke, width: number): string {
     attrs.push(`stroke-dasharray="${stroke.dash.map(num).join(' ')}"`);
   }
   if (stroke.cap !== 'butt') {
-    attrs.push(`stroke-linecap="${stroke.cap}"`);
+    attrs.push(`stroke-linecap="${escapeAttr(stroke.cap)}"`);
   }
   if (stroke.join !== 'miter') {
-    attrs.push(`stroke-linejoin="${stroke.join}"`);
+    attrs.push(`stroke-linejoin="${escapeAttr(stroke.join)}"`);
   }
   return attrs.join(' ');
 }
@@ -322,8 +322,13 @@ export function num(value: number): string {
   return Object.is(rounded, -0) ? '0' : String(rounded);
 }
 
+/** Layer keys are generated (`n123`), but ids built from them must never break out of an attribute or url(#…). */
+function idPart(key: string): string {
+  return String(key).replace(/[^\w-]/g, '_');
+}
+
 function escapeText(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeAttr(value: string): string {

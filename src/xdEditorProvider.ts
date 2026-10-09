@@ -1,13 +1,18 @@
 import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { HostMessage, ImagePayload, WebviewMessage } from './protocol.ts';
+import { parseWebviewMessage, type HostMessage, type ImagePayload } from './protocol.ts';
 import { XdDocument } from './xd/parse.ts';
 import { ZipArchive } from './zip.ts';
 
 const RELOAD_DEBOUNCE_MS = 500;
+const MAX_FILE_SIZE = 300 * 1024 * 1024;
 
 async function readXd(uri: vscode.Uri): Promise<XdDocument> {
+  const { size } = await vscode.workspace.fs.stat(uri);
+  if (size > MAX_FILE_SIZE) {
+    throw new Error(`File is too large to open (${Math.round(size / 1024 / 1024)} MB; limit ${MAX_FILE_SIZE / 1024 / 1024} MB)`);
+  }
   const bytes = await vscode.workspace.fs.readFile(uri);
   return XdDocument.open(ZipArchive.open(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)));
 }
@@ -94,8 +99,9 @@ export class XdEditorProvider implements vscode.CustomReadonlyEditorProvider<XdC
 
     const subscriptions: vscode.Disposable[] = [
       document.onDidChange(postDocument),
-      webview.onDidReceiveMessage((message: WebviewMessage) => {
-        switch (message.type) {
+      webview.onDidReceiveMessage((raw: unknown) => {
+        const message = parseWebviewMessage(raw);
+        switch (message?.type) {
           case 'ready':
             postDocument();
             break;
@@ -133,7 +139,9 @@ function webviewHtml(webview: vscode.Webview, script: vscode.Uri, style: vscode.
   const nonce = randomBytes(16).toString('base64');
   const csp = [
     "default-src 'none'",
-    `img-src ${webview.cspSource} blob: data:`,
+    "base-uri 'none'",
+    "form-action 'none'",
+    `img-src ${webview.cspSource} blob:`,
     `style-src ${webview.cspSource}`,
     `font-src ${webview.cspSource}`,
     `script-src 'nonce-${nonce}'`,

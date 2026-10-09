@@ -63,7 +63,7 @@ window.acquireVsCodeApi = () => ({
 
 writeFileSync(path.join(outDir, 'mock.js'), mock);
 // Same policy as the real webview (see xdEditorProvider.ts), so CSP violations show up here too.
-const csp = "default-src 'none'; img-src 'self' blob: data:; style-src 'self'; font-src 'self'; script-src 'self'; connect-src 'self'";
+const csp = "default-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' blob:; style-src 'self'; font-src 'self'; script-src 'self'; connect-src 'self'";
 writeFileSync(
   path.join(outDir, 'index.html'),
   `<!DOCTYPE html>
