@@ -32,9 +32,10 @@ const HUGE = 100000;
 /**
  * Renders an artboard as a standalone SVG string. Every layer becomes `<g data-key="…">` so the webview can map
  * DOM hits back to scene nodes; the element carrying the layer's own geometry has class `dv-geom`.
+ * Gradient/clip/filter ids start with `idPrefix`, which must differ between SVGs placed in the same page.
  */
-export function renderArtboardSvg(scene: ArtboardScene, imageUrl: ImageUrlResolver): string {
-  const writer = new SvgWriter(imageUrl);
+export function renderArtboardSvg(scene: ArtboardScene, imageUrl: ImageUrlResolver, idPrefix = 'dv'): string {
+  const writer = new SvgWriter(imageUrl, idPart(idPrefix));
   const body = scene.children.map((node) => writer.node(node)).join('');
   const width = num(scene.width);
   const height = num(scene.height);
@@ -50,9 +51,11 @@ export function renderArtboardSvg(scene: ArtboardScene, imageUrl: ImageUrlResolv
 class SvgWriter {
   readonly defs: string[] = [];
   private readonly imageUrl: ImageUrlResolver;
+  private readonly idPrefix: string;
 
-  constructor(imageUrl: ImageUrlResolver) {
+  constructor(imageUrl: ImageUrlResolver, idPrefix: string) {
     this.imageUrl = imageUrl;
+    this.idPrefix = idPrefix;
   }
 
   node(node: SceneNode): string {
@@ -107,11 +110,11 @@ class SvgWriter {
     const path = `d="${escapeAttr(d)}" fill-rule="${fillRule}"`;
     const doubled = `fill="none" ${strokeAttrs(stroke, stroke.width * 2)}`;
     if (stroke.align === 'inside') {
-      const id = `dv-${idPart(key)}-stroke-clip`;
+      const id = `${this.idPrefix}-${idPart(key)}-stroke-clip`;
       this.defs.push(`<clipPath id="${id}"><path ${path}/></clipPath>`);
       return `<path ${path} ${doubled} clip-path="url(#${id})"/>`;
     }
-    const id = `dv-${idPart(key)}-stroke-mask`;
+    const id = `${this.idPrefix}-${idPart(key)}-stroke-mask`;
     const area = `x="${-HUGE}" y="${-HUGE}" width="${HUGE * 2}" height="${HUGE * 2}"`;
     this.defs.push(
       `<mask id="${id}" maskUnits="userSpaceOnUse" ${area}><rect ${area} fill="white"/><path ${path} fill="black"/></mask>`,
@@ -125,7 +128,7 @@ class SvgWriter {
     if (!node.clip) {
       return background + children;
     }
-    const id = `dv-${idPart(node.key)}-clip`;
+    const id = `${this.idPrefix}-${idPart(node.key)}-clip`;
     const shapes = node.clip
       .map((shape) => geometryElement(shape.geometry, isIdentity(shape.transform) ? '' : `transform="${matrix(shape.transform)}"`))
       .join('');
@@ -156,7 +159,7 @@ class SvgWriter {
       case 'solid':
         return colorAttrs('fill', paint.color);
       case 'linear': {
-        const id = `dv-${idPart(key)}-fill`;
+        const id = `${this.idPrefix}-${idPart(key)}-fill`;
         this.defs.push(
           `<linearGradient id="${id}" x1="${num(paint.x1)}" y1="${num(paint.y1)}" x2="${num(paint.x2)}" y2="${num(paint.y2)}">` +
             `${paint.stops.map(stopElement).join('')}</linearGradient>`,
@@ -164,7 +167,7 @@ class SvgWriter {
         return `fill="url(#${id})"`;
       }
       case 'radial': {
-        const id = `dv-${idPart(key)}-fill`;
+        const id = `${this.idPrefix}-${idPart(key)}-fill`;
         this.defs.push(
           `<radialGradient id="${id}" cx="${num(paint.cx)}" cy="${num(paint.cy)}" r="${num(paint.r)}" fx="${num(paint.fx)}" fy="${num(paint.fy)}">` +
             `${paint.stops.map(stopElement).join('')}</radialGradient>`,
@@ -176,7 +179,7 @@ class SvgWriter {
         if (!url) {
           return `fill="${MISSING_IMAGE_FILL}"`;
         }
-        const id = `dv-${idPart(key)}-fill`;
+        const id = `${this.idPrefix}-${idPart(key)}-fill`;
         const width = num(paint.width);
         const height = num(paint.height);
         const fit = paint.fit === 'contain' ? 'meet' : 'slice';
@@ -190,7 +193,7 @@ class SvgWriter {
   }
 
   private shadowFilter(key: string, shadows: Shadow[]): string {
-    const id = `dv-${idPart(key)}-shadow`;
+    const id = `${this.idPrefix}-${idPart(key)}-shadow`;
     const layers = shadows
       .map(
         (shadow, i) =>

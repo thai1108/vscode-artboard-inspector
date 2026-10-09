@@ -586,3 +586,89 @@ button {
   transform: translateX(-50%);
   pointer-events: none;
 }
+
+/* Board view */
+
+.mode-toggle {
+  display: inline-flex;
+  margin-right: 4px;
+  border: 1px solid var(--dv-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.mode-toggle .text-button {
+  border-radius: 0;
+}
+
+.mode-toggle .text-button.active {
+  color: var(--dv-active-fg);
+  background: var(--dv-active);
+}
+
+#board-page {
+  max-width: 180px;
+  height: 24px;
+  margin-right: 6px;
+  color: inherit;
+  background: var(--dv-input);
+  border: 1px solid var(--dv-input-border);
+  border-radius: 2px;
+}
+
+#board-page[hidden] {
+  display: none;
+}
+
+.dv-board {
+  position: relative;
+}
+
+.dv-board-item {
+  position: absolute;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.dv-board-item .dv-artboard {
+  box-shadow: none;
+}
+
+.dv-board-item.failed {
+  background: repeating-linear-gradient(45deg, #f3d6d6, #f3d6d6 6px, #ffffff 6px, #ffffff 12px);
+}
+
+#board-titles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#board-titles[hidden] {
+  display: none;
+}
+
+.dv-board-title {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  color: var(--dv-dim);
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: default;
+  user-select: none;
+}
+
+.dv-board-title:hover {
+  color: var(--dv-fg);
+}
+
+.dv-board-title.active {
+  color: var(--dv-select);
+}

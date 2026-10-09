@@ -3,7 +3,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DesignDocument } from './document.ts';
 import { openDesignDocument } from './openDocument.ts';
-import { parseWebviewMessage, type HostMessage, type ImagePayload } from './protocol.ts';
+import { artboardMessage, scenesMessage } from './payload.ts';
+import { parseWebviewMessage, type HostMessage } from './protocol.ts';
 
 const RELOAD_DEBOUNCE_MS = 500;
 const MAX_FILE_SIZE = 300 * 1024 * 1024;
@@ -99,7 +100,12 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
 
     const post = (message: HostMessage) => void webview.postMessage(message);
     const postDocument = () =>
-      post({ type: 'document', fileName: path.posix.basename(document.uri.path), artboards: [...document.design.artboards] });
+      post({
+        type: 'document',
+        fileName: path.posix.basename(document.uri.path),
+        artboards: [...document.design.artboards],
+        board: document.design.board,
+      });
 
     const subscriptions: vscode.Disposable[] = [
       document.onDidChange(postDocument),
@@ -110,7 +116,10 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
             postDocument();
             break;
           case 'loadArtboard':
-            post(loadArtboard(document.design, message.id, new Set(message.knownImages)));
+            post(artboardMessage(document.design, message.id, new Set(message.knownImages)));
+            break;
+          case 'loadArtboards':
+            post(scenesMessage(document.design, message.ids, new Set(message.knownImages)));
             break;
           case 'copy':
             void vscode.env.clipboard.writeText(message.text);
@@ -120,22 +129,6 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
       }),
     ];
     panel.onDidDispose(() => subscriptions.forEach((subscription) => subscription.dispose()));
-  }
-}
-
-function loadArtboard(design: DesignDocument, id: string, knownImages: Set<string>): HostMessage {
-  try {
-    const scene = design.scene(id);
-    const images: ImagePayload[] = [];
-    for (const uid of scene.imageUids) {
-      const image = knownImages.has(uid) ? undefined : design.image(uid);
-      if (image) {
-        images.push({ uid, mime: image.mime, data: image.data });
-      }
-    }
-    return { type: 'artboard', scene, images };
-  } catch (error) {
-    return { type: 'error', message: (error as Error).message };
   }
 }
 

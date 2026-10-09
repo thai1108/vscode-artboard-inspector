@@ -7,10 +7,22 @@ Open Adobe XD (`.xd`) files and Figma local copies (`.fig`) in VS Code and inspe
 - Artboard list with filter, layer tree, zoom/pan canvas
 - Click a layer to see position, size, fill, border, radius, shadow, typography and generated CSS; click any value to copy it
 - With a layer selected, hover another one (or the artboard background) to see the spacing redlines
+- Board view: every artboard at its position in the file, inspect and measure across artboards
 - Reloads automatically when the file changes on disk
 - Fully offline: the file is unzipped and rendered locally, nothing is uploaded
 
 ![Inspecting a text layer: typography, insets to the parent and CSS](images/inspect-text.png)
+
+## Board view
+
+Switch the toolbar from **Artboard** to **Board** (or press `B`) to see every artboard of the file where the
+designer placed it — one board per Figma page (pick it in the toolbar), one board for an XD file. Click any layer
+on any artboard to inspect it, hover another layer or artboard to measure the distance (also between artboards),
+and double-click an artboard or its title to open it on its own. Clicking an artboard in the list flies to it.
+Only artboards near the screen and large enough to read are drawn in full, so files with hundreds of artboards stay
+responsive.
+
+![Board view: measuring from a layer in one artboard to a layer in another](images/board.png)
 
 ## Figma files (.fig)
 
@@ -36,11 +48,13 @@ code --install-extension artboard-inspector-0.2.0.vsix
 | Scroll / trackpad | Pan |
 | Ctrl/Cmd + scroll, pinch | Zoom at the cursor |
 | Space + drag, middle drag, drag outside the artboard | Pan |
+| `B` | Switch between Artboard and Board view |
 | `+` / `-` | Zoom in / out |
 | `1` | 100% |
-| `0` | Fit artboard |
+| `0` | Fit artboard (Board: fit the whole board) |
 | `W` | Fit width |
-| `Esc` | Select the parent layer |
+| `Esc` | Select the parent layer (Board: then the artboard, then nothing) |
+| Double-click (Board) | Open that artboard on its own |
 
 ## Limitations
 
