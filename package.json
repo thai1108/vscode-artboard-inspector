@@ -66,9 +66,10 @@
   "scripts": {
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
-    "typecheck": "tsc -p . && tsc -p src/webview",
+    "typecheck": "tsc -p . && tsc -p src/webview && tsc -p test/webview",
     "lint": "eslint .",
     "test": "node --test \"test/**/*.test.ts\"",
+    "coverage": "node --test --experimental-test-coverage \"test/**/*.test.ts\"",
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "smoke": "node scripts/smoke.ts",
     "preview": "node esbuild.mjs && node scripts/preview.ts",

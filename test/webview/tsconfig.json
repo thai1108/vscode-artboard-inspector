@@ -1,0 +1,8 @@
+{
+  "extends": "../../src/webview/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": []
+}
