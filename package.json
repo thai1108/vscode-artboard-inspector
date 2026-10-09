@@ -1,0 +1,59 @@
+{
+  "name": "design-viewer",
+  "displayName": "Design Viewer for XD Files",
+  "description": "View and inspect Adobe XD files inside VS Code: artboards, layers, sizes, spacing, colors, fonts and CSS.",
+  "version": "0.1.0",
+  "publisher": "thainv",
+  "icon": "media/icon.png",
+  "private": true,
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thai1108/vscode-design-viewer.git"
+  },
+  "type": "module",
+  "engines": {
+    "vscode": "^1.140.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "designViewer.xd",
+        "displayName": "Design Viewer",
+        "selector": [
+          {
+            "filenamePattern": "*.xd"
+          }
+        ],
+        "priority": "default"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p . && tsc -p src/webview",
+    "lint": "eslint .",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "smoke": "node scripts/smoke.ts",
+    "preview": "node esbuild.mjs && node scripts/preview.ts",
+    "package": "pnpm check && vsce package --no-dependencies --skip-license"
+  },
+  "packageManager": "pnpm@10.15.1",
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.1",
+    "@types/vscode": "1.140.0",
+    "@vscode/vsce": "4.0.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1"
+  }
+}
