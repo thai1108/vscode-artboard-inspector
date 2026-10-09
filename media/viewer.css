@@ -455,6 +455,10 @@ button {
   grid-template-columns: 1fr;
 }
 
+.prop-grid + .prop-grid {
+  margin-top: 6px;
+}
+
 .prop {
   display: flex;
   align-items: center;

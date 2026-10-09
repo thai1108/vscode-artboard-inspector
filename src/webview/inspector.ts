@@ -85,18 +85,14 @@ function nodeInspector(ctx: InspectorContext, node: SceneNode): string {
       section(
         'Shadow',
         node.shadows
-          .map((shadow) =>
-            grid([
-              prop('X', copyable(fmt(shadow.x))),
-              prop('Y', copyable(fmt(shadow.y))),
-              prop('Blur', copyable(fmt(shadow.blur))),
-              prop('Color', colorValue(shadow.color)),
-            ]),
+          .map(
+            (shadow) =>
+              grid([prop('X', copyable(fmt(shadow.x))), prop('Y', copyable(fmt(shadow.y))), prop('Blur', copyable(fmt(shadow.blur)))]) +
+              grid([prop('Color', colorValue(shadow.color)), prop('CSS', copyable(shadowValue(shadow)))], 'wide'),
           )
           .join(''),
       ),
     );
-    parts.push(`<div class="prop-text dim">${escapeHtml(node.shadows.map(shadowValue).join(', '))}</div>`);
   }
   if (ctx.box) {
     parts.push(cssSection(node, ctx.box));
