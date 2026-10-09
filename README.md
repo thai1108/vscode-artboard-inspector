@@ -38,6 +38,8 @@ code --install-extension artboard-inspector-0.1.0.vsix
 - Text is drawn with the fonts installed locally. Fonts the design uses but this machine lacks are listed as
   "not installed" in the inspector; XD's Windows fallback fonts (Yu Gothic UI) are approximated with proportional
   Japanese metrics.
+- Files larger than 300 MB, or with more than 50,000 layers per artboard, are refused or cut off (with a notice) to
+  keep VS Code responsive.
 - Blur and background-blur effects are not rendered (listed under "Not rendered" in the artboard inspector).
 - Figma files are not supported.
 

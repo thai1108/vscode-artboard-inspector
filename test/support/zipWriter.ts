@@ -5,6 +5,10 @@ export interface ZipInput {
   data: Buffer | string;
   /** Store uncompressed instead of deflating. */
   store?: boolean;
+  /** Lie about the uncompressed size in the headers (for hostile-archive tests). */
+  declaredSize?: number;
+  /** Lie about the compressed size in the headers (for hostile-archive tests). */
+  declaredCompressedSize?: number;
 }
 
 /** Minimal ZIP writer for building test archives. */
@@ -18,6 +22,8 @@ export function writeZip(files: ZipInput[], comment = ''): Buffer {
     const name = Buffer.from(file.name, 'utf8');
     const method = file.store ? 0 : 8;
     const crc = crc32(raw);
+    const size = file.declaredSize ?? raw.length;
+    const compressedSize = file.declaredCompressedSize ?? body.length;
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
@@ -25,8 +31,8 @@ export function writeZip(files: ZipInput[], comment = ''): Buffer {
     local.writeUInt16LE(0x0800, 6);
     local.writeUInt16LE(method, 8);
     local.writeUInt32LE(crc, 14);
-    local.writeUInt32LE(body.length, 18);
-    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt32LE(compressedSize, 18);
+    local.writeUInt32LE(size, 22);
     local.writeUInt16LE(name.length, 26);
     locals.push(local, name, body);
 
@@ -37,8 +43,8 @@ export function writeZip(files: ZipInput[], comment = ''): Buffer {
     central.writeUInt16LE(0x0800, 8);
     central.writeUInt16LE(method, 10);
     central.writeUInt32LE(crc, 16);
-    central.writeUInt32LE(body.length, 20);
-    central.writeUInt32LE(raw.length, 24);
+    central.writeUInt32LE(compressedSize, 20);
+    central.writeUInt32LE(size, 24);
     central.writeUInt16LE(name.length, 28);
     central.writeUInt32LE(offset, 42);
     centrals.push(central, name);

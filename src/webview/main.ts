@@ -1,7 +1,7 @@
 import type { HostMessage, ImagePayload } from '../protocol.ts';
 import { measureBetween, type Guide } from '../render/measure.ts';
 import { renderArtboardSvg } from '../render/svg.ts';
-import type { Box } from '../render/geometry.ts';
+import { fmt, type Box } from '../render/geometry.ts';
 import type { ArtboardScene, ArtboardSummary, SceneNode } from '../xd/scene.ts';
 import { indexScene, measureLayers, type IndexedNode } from './bounds.ts';
 import { escapeHtml } from '../render/html.ts';
@@ -137,7 +137,7 @@ async function onArtboard(next: ArtboardScene, images: ImagePayload[]): Promise<
   }
   hovered = null;
 
-  ui.title.innerHTML = `${escapeHtml(next.name)} <span class="dim">${next.width} × ${next.height}</span>`;
+  ui.title.innerHTML = `${escapeHtml(next.name)} <span class="dim">${fmt(next.width)} × ${fmt(next.height)}</span>`;
   const warningCount = new Set(next.warnings).size;
   ui.warnings.hidden = warningCount === 0;
   ui.warnings.textContent = `⚠ ${warningCount}`;
@@ -158,7 +158,7 @@ function renderArtboardList(): void {
     .map(
       (artboard) =>
         `<li class="artboard-item${artboard.id === scene?.id ? ' active' : ''}" data-id="${escapeHtml(artboard.id)}" title="${escapeHtml(artboard.name)}">` +
-        `<span class="artboard-name">${escapeHtml(artboard.name)}</span><span class="dim">${artboard.width}×${artboard.height}</span></li>`,
+        `<span class="artboard-name">${escapeHtml(artboard.name)}</span><span class="dim">${fmt(artboard.width)}×${fmt(artboard.height)}</span></li>`,
     )
     .join('');
 }
@@ -209,7 +209,7 @@ function refreshSelection(): void {
     row.classList.remove('selected');
   }
   if (node) {
-    const row = ui.layers.querySelector(`.layer-row[data-key="${node.key}"]`);
+    const row = ui.layers.querySelector(`.layer-row[data-key="${CSS.escape(node.key)}"]`);
     if (row) {
       row.classList.add('selected');
       for (let li = row.parentElement?.parentElement?.closest('li.layer'); li; li = li.parentElement?.closest('li.layer')) {

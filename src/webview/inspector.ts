@@ -166,7 +166,7 @@ function cssSection(node: SceneNode, box: Box): string {
 
 function breadcrumbs(scene: ArtboardScene, ancestors: SceneNode[]): string {
   const crumbs = [`<button class="crumb" data-select="">${escapeHtml(scene.name)}</button>`].concat(
-    ancestors.map((node) => `<button class="crumb" data-select="${node.key}">${escapeHtml(displayName(node))}</button>`),
+    ancestors.map((node) => `<button class="crumb" data-select="${escapeHtml(node.key)}">${escapeHtml(displayName(node))}</button>`),
   );
   return `<nav class="crumbs">${crumbs.join('<span class="crumb-sep">›</span>')}</nav>`;
 }
