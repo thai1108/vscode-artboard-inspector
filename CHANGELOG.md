@@ -14,6 +14,9 @@
 - Fix: embedded images did not display inside VS Code (the image bytes reached the webview as a serialized Node
   Buffer, and each image transferred the whole file). Images are now sent as exactly-sized byte arrays, and any
   image that still arrives undecodable is listed as a layer warning.
+- Tests: 205 fast tests (node:test, including happy-dom tests of the webview's DOM wiring), a Playwright suite
+  that checks the webview in Chrome through VS Code's message serializer (images must really decode), and
+  extension tests inside VS Code that open `.xd` and `.fig` files in the custom editors.
 
 ## 0.1.1
 

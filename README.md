@@ -72,13 +72,24 @@ code --install-extension artboard-inspector-0.2.0.vsix
 
 ```bash
 pnpm watch                            # rebuild on change, then F5 in VS Code to launch the extension host
-pnpm check                            # type-check, lint, tests, build
+pnpm check                            # type-check, lint, fast tests (node:test + happy-dom), build
+pnpm coverage                         # fast tests with Node's built-in coverage report
+pnpm test:e2e                         # Playwright in the installed Google Chrome against the browser preview
+pnpm test:vscode                      # extension tests inside VS Code (uses the installed app if found)
 pnpm smoke <file.xd|file.fig>...     # parse and render every artboard, print warnings
 pnpm preview <file.xd|file.fig> <dir> # static browser copy of the webview for UI checks
 pnpm sample <out.xd>                  # write an original demo design (used for the screenshots above)
 ```
 
-`pnpm preview` writes the design data to `<out-dir>`; keep it outside the repository.
+- `pnpm test:e2e` checks the synthetic demo (selection, inspector values, redlines, zoom, board view, images
+  actually decoded, no console/CSP errors). To run the generic checks on your own files as well, list them in
+  `E2E_FILES`, separated by `:` — e.g. `E2E_FILES="$HOME/a.xd:$HOME/b.fig" pnpm test:e2e`. It needs Google Chrome;
+  no Playwright browser download is required.
+- `pnpm test:vscode` opens the demo `.xd` and a small synthetic `.fig` in a real VS Code and checks that the
+  Artboard Inspector editors open them by default. Set `VSCODE_EXECUTABLE` to use a specific VS Code build;
+  without it and without `/Applications/Visual Studio Code.app`, a copy of VS Code is downloaded.
+- `pnpm preview` writes the design data to `<dir>`, and `E2E_FILES` runs build previews in a temporary folder;
+  keep real designs out of the repository.
 
 ## Trademarks
 
