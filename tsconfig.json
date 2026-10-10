@@ -17,5 +17,5 @@
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
-  "exclude": ["src/webview/**", "test/webview/**"]
+  "exclude": ["src/webview/**", "test/webview/**", "test/e2e/**"]
 }
