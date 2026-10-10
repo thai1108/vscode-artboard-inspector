@@ -24,7 +24,7 @@ export interface ViewState {
   zoom: number;
 }
 
-/** Artboards smaller than this on screen are drawn as cheap placeholders instead of full SVG. */
+/** Below 100% zoom, artboards smaller than this on screen are drawn as cheap placeholders instead of full SVG. */
 export const DETAIL_MIN_SCREEN_PX = 160;
 /** Upper bound on artboards drawn in full at the same time. */
 export const MAX_DETAILED = 48;
@@ -83,8 +83,12 @@ export function overlaps(a: Box, b: Box): boolean {
   return a.x <= right(b) && b.x <= right(a) && a.y <= bottom(b) && b.y <= bottom(a);
 }
 
+/**
+ * At 100% and above every visible artboard is drawn in full (only a stage's worth of them can be on screen, and
+ * MAX_DETAILED still caps them), so small artboards such as icons do not stay placeholders when zoomed in.
+ */
 export function showsDetail(item: Box, zoom: number): boolean {
-  return Math.max(item.width, item.height) * zoom >= DETAIL_MIN_SCREEN_PX;
+  return zoom >= 1 || Math.max(item.width, item.height) * zoom >= DETAIL_MIN_SCREEN_PX;
 }
 
 /** Artboards to draw in full: inside `area`, large enough on screen, nearest to the area's centre first, capped. */

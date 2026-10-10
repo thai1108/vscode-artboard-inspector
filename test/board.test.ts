@@ -116,11 +116,21 @@ describe('viewport culling and level of detail', () => {
     assert.ok(!showsDetail(board, DETAIL_MIN_SCREEN_PX / 800 - 0.01));
   });
 
+  it('draws small artboards in full once zoomed to 100% or more (fly-to an icon frame)', () => {
+    const icon = item('icon', 0, 0, 54, 54);
+    assert.ok(!showsDetail(icon, 0.99));
+    assert.ok(showsDetail(icon, 1));
+    assert.ok(showsDetail(icon, 4));
+    assert.deepEqual(planDetail([icon, item('off', 5000, 5000, 54, 54)], { x: 0, y: 0, width: 1000, height: 800 }, 1), ['icon']);
+  });
+
   it('plans full rendering for visible, big-enough artboards nearest the centre first, capped', () => {
-    const items = [item('far', 900, 0), item('centre', 450, 450), item('near', 300, 300), item('off', 5000, 5000), item('tiny', 460, 460, 10, 10)];
+    // Below 100% zoom the on-screen size decides (200 × 0.9 = 180px is enough, 10 × 0.9 is not).
+    const big = (id: string, x: number, y: number) => item(id, x, y, 200, 200);
+    const items = [big('far', 900, 0), big('centre', 400, 400), big('near', 250, 250), big('off', 5000, 5000), item('tiny', 460, 460, 10, 10)];
     const area = { x: 0, y: 0, width: 1000, height: 1000 };
-    assert.deepEqual(planDetail(items, area, 2), ['centre', 'near', 'far']);
-    assert.deepEqual(planDetail(items, area, 2, 2), ['centre', 'near']);
+    assert.deepEqual(planDetail(items, area, 0.9), ['centre', 'near', 'far']);
+    assert.deepEqual(planDetail(items, area, 0.9, 2), ['centre', 'near']);
     assert.deepEqual(planDetail(items, area, 0.1), []);
   });
 
