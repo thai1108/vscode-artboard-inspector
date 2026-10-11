@@ -49,8 +49,7 @@ jobs:
             exit 1
           fi
 
-      - run: pnpm check
-
+      # Runs pnpm check before vsce package.
       - run: pnpm package
 
       - name: Extract release notes from CHANGELOG.md
@@ -70,4 +69,4 @@ jobs:
         run: |
           # shellcheck disable=SC2086
           gh release create "$TAG" "artboard-inspector-$VERSION.vsix" \
-            --repo "$GITHUB_REPOSITORY" --verify-tag --title "$TAG" $NOTES_ARGS
+            --repo "$GITHUB_REPOSITORY" --verify-tag --title "Artboard Inspector $VERSION" $NOTES_ARGS
