@@ -13,6 +13,8 @@ export type HostMessage =
   | { type: 'artboard'; scene: ArtboardScene; images: ImagePayload[] }
   /** Answer to loadArtboards (board view); artboards that failed to convert are listed in `failed`. */
   | { type: 'scenes'; scenes: ArtboardScene[]; images: ImagePayload[]; failed: { id: string; message: string }[] }
+  /** Answer to pickScreenshot: an image checked by screenshot.ts, to overlay on `artboardId`. */
+  | { type: 'screenshot'; artboardId: string; name: string; data: Uint8Array }
   | { type: 'error'; message: string };
 
 /** Webview → extension host. */
@@ -20,7 +22,8 @@ export type WebviewMessage =
   | { type: 'ready' }
   | { type: 'loadArtboard'; id: string; knownImages: string[] }
   | { type: 'loadArtboards'; ids: string[]; knownImages: string[] }
-  | { type: 'copy'; text: string; label: string };
+  | { type: 'copy'; text: string; label: string }
+  | { type: 'pickScreenshot'; artboardId: string };
 
 export const MESSAGE_LIMITS = {
   idLength: 512,
@@ -61,6 +64,13 @@ export function parseWebviewMessage(raw: unknown): WebviewMessage | null {
         return null;
       }
       return { type: 'copy', text, label };
+    }
+    case 'pickScreenshot': {
+      const { artboardId } = message;
+      if (!isString(artboardId, MESSAGE_LIMITS.idLength)) {
+        return null;
+      }
+      return { type: 'pickScreenshot', artboardId };
     }
     default:
       return null;

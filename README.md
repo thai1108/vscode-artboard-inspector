@@ -8,6 +8,7 @@ Open Adobe XD (`.xd`) files and Figma local copies (`.fig`) in VS Code and inspe
 - Click a layer to see position, size, fill, border, radius, shadow, typography and generated CSS; click any value to copy it
 - With a layer selected, hover another one (or the artboard background) to see the spacing redlines
 - Board view: every artboard at its position in the file, inspect and measure across artboards
+- Overlay a screenshot of the implementation on an artboard to compare the two
 - Reloads automatically when the file changes on disk
 - Fully offline: the file is unzipped and rendered locally, nothing is uploaded
 
@@ -23,6 +24,17 @@ Only artboards near the screen and large enough to read are drawn in full, so fi
 responsive.
 
 ![Board view: measuring from a layer in one artboard to a layer in another](images/board.png)
+
+## Compare with a screenshot
+
+Click **Overlay** in the toolbar and pick a PNG, JPEG or WebP screenshot, paste one with Cmd/Ctrl+V, or hold Shift
+while dropping an image file on the canvas (without Shift, VS Code opens the dropped file itself). It is drawn over
+the artboard from its top-left corner and follows zoom and pan, and layers can still be inspected and measured
+through it. In the bar below the toolbar, set the **Scale** of the capture (image pixels per design pixel; 2x/3x for
+retina screenshots, guessed from the image width), the opacity, the **Difference** blend (pixels that match turn
+black), hide or remove it. While it is shown, the arrow keys nudge it by 1 px (Shift: 10 px) and the bar shows the
+offset. Each artboard keeps its own screenshot until the editor is closed; nothing is written to disk. Screenshots
+over 50 MB are refused, and the board view shows no overlays.
 
 ## Figma files (.fig)
 
@@ -54,6 +66,7 @@ code --install-extension artboard-inspector-0.2.0.vsix
 | `0` | Fit artboard (Board: fit the whole board) |
 | `W` | Fit width |
 | `Esc` | Select the parent layer (Board: then the artboard, then nothing) |
+| Arrow keys, Shift + arrow keys | Nudge the overlaid screenshot by 1 px / 10 px |
 | Double-click (Board) | Open that artboard on its own |
 
 ## Limitations
