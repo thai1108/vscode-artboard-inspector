@@ -19,8 +19,20 @@ export interface PreviewSite {
   dir: string;
   /** imageUids per artboard, in artboard-list order. */
   imageUidsByArtboard: string[][];
+  /** Content of every text layer per artboard, in artboard-list order. */
+  textsByArtboard: string[][];
   artboardIds: string[];
   close(): Promise<void>;
+}
+
+interface StoredNode {
+  kind?: string;
+  content?: string;
+  children?: StoredNode[];
+}
+
+function textsOf(nodes: StoredNode[]): string[] {
+  return nodes.flatMap((node) => [...(node.kind === 'text' && node.content ? [node.content] : []), ...textsOf(node.children ?? [])]);
 }
 
 /** Writes the synthetic demo design (scripts/sample-xd.ts) and returns its path. */
@@ -36,11 +48,12 @@ export async function servePreview(designFile: string): Promise<PreviewSite> {
   execFileSync(process.execPath, [path.join(ROOT, 'esbuild.mjs')], { cwd: ROOT, stdio: 'ignore' });
   execFileSync(process.execPath, [path.join(ROOT, 'scripts/preview.ts'), designFile, dir], { cwd: ROOT, stdio: 'ignore' });
   const info = JSON.parse(readFileSync(path.join(dir, 'data', 'document.json'), 'utf8')) as { artboards: { id: string }[] };
-  const imageUidsByArtboard = info.artboards.map((_, i) => {
+  const scenes = info.artboards.map((_, i) => {
     const stored = readFileSync(path.join(dir, 'data', `${i}.json`), 'utf8');
-    const message = JSON.parse(stored) as { scene?: { imageUids?: string[] } };
-    return message.scene?.imageUids ?? [];
+    return (JSON.parse(stored) as { scene?: { imageUids?: string[]; children?: StoredNode[] } }).scene;
   });
+  const imageUidsByArtboard = scenes.map((scene) => scene?.imageUids ?? []);
+  const textsByArtboard = scenes.map((scene) => textsOf(scene?.children ?? []));
 
   const server: Server = createServer((request, response) => {
     const pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
@@ -68,6 +81,7 @@ export async function servePreview(designFile: string): Promise<PreviewSite> {
     url: `http://127.0.0.1:${port}/index.html`,
     dir,
     imageUidsByArtboard,
+    textsByArtboard,
     artboardIds: info.artboards.map((artboard) => artboard.id),
     close: () =>
       new Promise<void>((resolve) => {

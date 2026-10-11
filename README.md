@@ -8,6 +8,7 @@ Open Adobe XD (`.xd`) files and Figma local copies (`.fig`) in VS Code and inspe
 - Click a layer to see position, size, fill, border, radius, shadow, typography, generated CSS and Tailwind classes; click any value to copy it
 - With a layer selected, hover another one (or the artboard background) to see the spacing redlines
 - Board view: every artboard at its position in the file, inspect and measure across artboards
+- Search the text and layer names of every artboard, Japanese included
 - Reloads automatically when the file changes on disk
 - Fully offline: the file is unzipped and rendered locally, nothing is uploaded
 
@@ -31,6 +32,19 @@ Default-theme utilities are used only when they give exactly the design's value 
 for 14px/20px, `font-bold`, `tracking-wide`; lengths on the 4px grid). Anything else, and every color, shadow and
 gradient, is an arbitrary value (`w-[191px]`, `text-[#CA4343]`, `shadow-[0_2px_8px_rgba(0,0,0,0.08)]`). A project's
 own Tailwind theme is not read.
+
+## Search
+
+Press `Cmd+F` (`Ctrl+F` on Windows/Linux) or click the search box at the top of the sidebar and type part of a text
+or a layer name. Matching ignores case and character width — `ＡＢＣ` finds `abc`, `ｶﾞｲﾄﾞ` finds `ガイド` — and
+line breaks. Each result shows the layer, the text around the match and its artboard; choosing one opens that
+artboard, selects the layer in the canvas, the layer tree and the inspector. The first 200 results are listed.
+
+| Key (search box) | Action |
+| --- | --- |
+| `↓` / `↑` | Move through the results |
+| `Enter` | Open the result; again for the next one (`Shift+Enter`: the previous one) |
+| `Esc` | Clear the search; again to leave the box |
 
 ## Figma files (.fig)
 
@@ -79,6 +93,8 @@ code --install-extension artboard-inspector-0.2.0.vsix
   Japanese metrics.
 - Files larger than 300 MB, or with more than 50,000 layers per artboard, are refused or cut off (with a notice) to
   keep VS Code responsive.
+- Search reads the first 5,000 characters of each text layer and stops after 250,000 layers or 5 million
+  characters per file; the result count then says how many artboards were searched.
 - Blur and background-blur effects are not rendered (listed under "Not rendered" in the artboard inspector).
 - Figma: layers are redrawn from the file, so they can differ slightly from Figma itself. Layers with several fills
   show only the top one, angular/diamond gradients are drawn as radial ones, and FigJam objects (stickies, widgets)
