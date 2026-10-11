@@ -85,6 +85,12 @@ window.acquireVsCodeApi = () => ({
       post(reply);
     } else if (message.type === 'copy') {
       console.log('[copy]', message.label, message.text);
+    } else if (message.type === 'save') {
+      // What the extension host would receive (structured clone out of the webview, then VS Code's serializer);
+      // collected for the browser tests instead of opening a save dialog.
+      const received = deserializeInWebview(serializeForWebview(structuredClone(message)));
+      (window.previewSaves ??= []).push(received);
+      console.log('[save]', received.fileName, received.data?.byteLength);
     }
   },
   getState: () => JSON.parse(sessionStorage.getItem('dv-state') || 'null') ?? undefined,

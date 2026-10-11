@@ -5,9 +5,21 @@ import type { DesignDocument } from './document.ts';
 import { openDesignDocument } from './openDocument.ts';
 import { artboardMessage, scenesMessage } from './payload.ts';
 import { parseWebviewMessage, type HostMessage } from './protocol.ts';
+import { saveExport, type SaveDeps } from './saveExport.ts';
 
 const RELOAD_DEBOUNCE_MS = 500;
 const MAX_FILE_SIZE = 300 * 1024 * 1024;
+
+/** Saves exports next to the design file by default, through VS Code's dialog and file system. */
+export function vscodeSaveDeps(designUri: vscode.Uri): SaveDeps {
+  return {
+    defaultUri: (fileName) => vscode.Uri.joinPath(designUri, '..', fileName),
+    showSaveDialog: (options) => vscode.window.showSaveDialog(options),
+    writeFile: (uri, data) => vscode.workspace.fs.writeFile(uri, data),
+    showInformationMessage: (message) => void vscode.window.showInformationMessage(message),
+    showErrorMessage: (message) => void vscode.window.showErrorMessage(message),
+  };
+}
 
 async function readDesign(uri: vscode.Uri): Promise<DesignDocument> {
   const { size } = await vscode.workspace.fs.stat(uri);
@@ -124,6 +136,9 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
           case 'copy':
             void vscode.env.clipboard.writeText(message.text);
             vscode.window.setStatusBarMessage(`Copied ${message.label}`, 2000);
+            break;
+          case 'save':
+            void saveExport(message, vscodeSaveDeps(document.uri));
             break;
         }
       }),

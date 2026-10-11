@@ -2,6 +2,9 @@
 // (out/vs/workbench/api/node/extensionHostProcess.js, functions T8 / ote / w8). Used by tests and by the browser
 // preview's mock host, so payloads that only break inside VS Code (e.g. Node Buffers) break there too.
 // Both functions must stay self-contained: scripts/preview.ts embeds their source with Function#toString().
+//
+// The way back uses the same pair: the webview's message is structured-cloned to the workbench, serialized there by
+// the same code as T8 (workbench.desktop.main.js) and revived in the extension host by w8 ($onMessage).
 
 export interface SerializedMessage {
   message: string;
@@ -75,4 +78,9 @@ export function deserializeInWebview(serialized: SerializedMessage): unknown {
     }
     return new View(buffer, reference.view.byteOffset, reference.view.byteLength / View.BYTES_PER_ELEMENT);
   });
+}
+
+/** What the extension host's onDidReceiveMessage gets for a message the webview posted. */
+export function receivedFromWebview(message: unknown): unknown {
+  return deserializeInWebview(serializeForWebview(structuredClone(message)));
 }

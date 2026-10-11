@@ -2,6 +2,9 @@
 import assert from 'node:assert/strict';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { vscodeSaveDeps } from '../../src/designEditorProvider.ts';
+import { parseWebviewMessage } from '../../src/protocol.ts';
+import { saveExport } from '../../src/saveExport.ts';
 
 // Mocha's TDD globals, provided by @vscode/test-cli inside the extension host.
 declare function suite(name: string, body: () => void): void;
@@ -82,5 +85,45 @@ suite('Artboard Inspector in VS Code', () => {
     const tab = await openByDefault(uri);
     assert.equal(tab.viewType, 'artboardInspector.fig');
     assert.equal(tab.uri.fsPath, uri.fsPath);
+  });
+
+  test('saves a file a webview posts as a Uint8Array next to the design file', async () => {
+    // A webview of this extension posts the way the inspector's export buttons do, so the bytes take VS Code's
+    // real webview → extension host path; only the save dialog is answered by the test.
+    const bytes = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2, 3];
+    const panel = vscode.window.createWebviewPanel('artboardInspector.exportProbe', 'Export probe', vscode.ViewColumn.One, { enableScripts: true });
+    const target = vscode.Uri.file(workspacePath('Probe@2x.png'));
+    try {
+      let received: unknown;
+      panel.webview.onDidReceiveMessage((message: unknown) => {
+        received = message;
+      });
+      panel.webview.html =
+        `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-probe'"></head><body>` +
+        `<script nonce="probe">acquireVsCodeApi().postMessage({ type: 'save', fileName: 'Probe@2x.png', data: new Uint8Array(${JSON.stringify(bytes)}) });</script>` +
+        '</body></html>';
+      const raw = await waitFor(() => received, 'the message from the webview');
+      assert.ok((raw as { data?: unknown }).data instanceof Uint8Array, `data arrived as ${Object.prototype.toString.call((raw as { data?: unknown }).data)}`);
+      const message = parseWebviewMessage(raw);
+      assert.ok(message?.type === 'save', 'the save message passes validation');
+
+      const dialogs: vscode.SaveDialogOptions[] = [];
+      const shown: string[] = [];
+      const saved = await saveExport(message, {
+        ...vscodeSaveDeps(vscode.Uri.file(workspacePath('sample-store.xd'))),
+        showSaveDialog: async (options) => {
+          dialogs.push(options);
+          return options.defaultUri;
+        },
+        showInformationMessage: (text) => shown.push(text),
+      });
+      assert.equal(dialogs[0]?.defaultUri?.fsPath, target.fsPath, 'the dialog starts in the design file folder');
+      assert.equal(saved?.fsPath, target.fsPath);
+      assert.deepEqual([...(await vscode.workspace.fs.readFile(target))], bytes);
+      assert.deepEqual(shown, [`Saved ${target.fsPath}`]);
+    } finally {
+      panel.dispose();
+      await Promise.resolve(vscode.workspace.fs.delete(target)).catch(() => undefined);
+    }
   });
 });

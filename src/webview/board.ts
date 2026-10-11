@@ -7,6 +7,7 @@ import type { BoardLayout } from '../scene/board.ts';
 import { toCssColor } from '../scene/color.ts';
 import type { ArtboardScene, ArtboardSummary, SceneNode } from '../scene/scene.ts';
 import { indexScene, measureLayers, type IndexedNode } from './bounds.ts';
+import type { ExportTarget } from './exporter.ts';
 import { renderInspector } from './inspector.ts';
 import { renderLayerTree } from './layers.ts';
 import { drawOverlay } from './overlay.ts';
@@ -36,6 +37,7 @@ export interface BoardDeps {
   layers: HTMLElement;
   viewport: Viewport;
   imageUrl: ImageUrlResolver;
+  imageFormat(uid: string): string | undefined;
   requestScenes(ids: string[]): void;
   /** Called when the selected artboard changes, e.g. to highlight it in the artboard list. */
   onSelectionChange(artboardId: string | null): void;
@@ -101,6 +103,13 @@ export class BoardView {
 
   get selectedArtboard(): string | null {
     return this.selected?.artboard ?? null;
+  }
+
+  /** The selected layer (not an artboard) with its artboard's measured boxes, for exporting it. */
+  selectedLayer(): ExportTarget | null {
+    const selection = this.selected;
+    const entry = selection?.key ? this.loaded.get(selection.artboard) : undefined;
+    return selection && entry ? { scene: entry.scene, key: selection.key, boxes: this.boxesOf(selection.artboard) ?? new Map() } : null;
   }
 
   /** A converted scene the board already holds, so the single-artboard view can reuse it. */
@@ -532,6 +541,7 @@ export class BoardView {
         box: node ? (this.boxesOf(selection.artboard)?.get(node.key) ?? null) : null,
         ancestors: node ? ancestorsOf(entry.index, node.key) : [],
         layerCount: entry.index.size,
+        imageFormat: this.deps.imageFormat,
       });
     }
     this.highlightLayerRow(selection?.key ?? null);
