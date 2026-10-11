@@ -525,7 +525,8 @@ button {
 }
 
 .content,
-.css {
+.css,
+.tailwind {
   margin: 0 0 6px;
   padding: 6px 8px;
   max-height: 220px;
@@ -536,6 +537,12 @@ button {
   word-break: break-all;
   background: var(--dv-code);
   border-radius: 3px;
+}
+
+/* Kept whole on a line; only a class wider than the block breaks inside. */
+.tw-class {
+  display: inline-block;
+  max-width: 100%;
 }
 
 .action {
