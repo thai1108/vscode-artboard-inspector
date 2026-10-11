@@ -25,6 +25,8 @@
 html,
 body {
   margin: 0;
+  /* VS Code's default webview styles pad the body by 20px left and right. */
+  padding: 0;
   height: 100%;
   overflow: hidden;
   background: var(--dv-bg);

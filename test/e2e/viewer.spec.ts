@@ -87,13 +87,16 @@ async function overlayPlacement(page: Page, artboardWidth: number) {
 }
 
 /**
- * VS Code injects a default stylesheet into every webview (webview/browser/pre/index.html in VS Code 1.141); its image
- * rule would shrink an overlay taller than the artboard. Adopted, because the page's CSP refuses inline styles.
+ * VS Code injects a default stylesheet into every webview (webview/browser/pre/index.html in VS Code 1.141); its body
+ * padding would inset the viewer and its image rule would shrink an overlay taller than the artboard. Adopted, because
+ * the page's CSP refuses inline styles.
  */
-async function adoptVsCodeImageDefaults(page: Page) {
+async function adoptVsCodeDefaults(page: Page) {
   await page.evaluate(() => {
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync('@layer vscode-default { img, video { max-width: 100%; max-height: 100%; } }');
+    sheet.replaceSync(
+      '@layer vscode-default { body { margin: 0; padding: 0 20px; } img, video { max-width: 100%; max-height: 100%; } }',
+    );
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
   });
 }
@@ -119,6 +122,11 @@ test.describe('synthetic demo', () => {
     await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
     await expect(page.locator('#artboards .artboard-item')).toHaveCount(3);
     expect(await expectImagesLoaded(page)).toBe(1);
+
+    await adoptVsCodeDefaults(page);
+    const appBox = await page.locator('#app').boundingBox();
+    expect(appBox?.x).toBe(0);
+    expect(appBox?.width).toBe(page.viewportSize()?.width);
 
     await page.locator('#layers .layer-row', { hasText: 'Card / Ceramic Mug' }).locator('[data-toggle]').click();
     await layerRowIn(page, 'Card / Ceramic Mug', 'Card background').click();
@@ -153,7 +161,7 @@ test.describe('synthetic demo', () => {
     await page.goto(site.url);
     await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
     await expect(page.locator('#screenshot-bar')).toBeHidden();
-    await adoptVsCodeImageDefaults(page);
+    await adoptVsCodeDefaults(page);
 
     // A 2x capture of the 430 × 932 artboard.
     const chooser = page.waitForEvent('filechooser');
