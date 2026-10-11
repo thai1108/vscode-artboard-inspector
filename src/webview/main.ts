@@ -13,6 +13,7 @@ import { exportLayer, type ExportFormat, type ExportTarget } from './exporter.ts
 import { renderInspector } from './inspector.ts';
 import { renderLayerTree } from './layers.ts';
 import { drawOverlay } from './overlay.ts';
+import { ScreenshotOverlay } from './screenshot.ts';
 import { isTyping, Viewport } from './viewport.ts';
 import { vscode } from './vscodeApi.ts';
 
@@ -42,12 +43,14 @@ byId('app').innerHTML = `
       <span id="artboard-title"></span>
       <span class="spacer"></span>
       <span id="warnings" class="warning-badge" hidden></span>
+      <button id="screenshot-load" class="text-button" title="Overlay a screenshot (PNG, JPEG or WebP) on this artboard. You can also paste one, or drop one while holding Shift." hidden>Overlay</button>
       <button id="zoom-out" class="icon-button" title="Zoom out (-)">−</button>
       <button id="zoom-value" class="zoom-value" title="Actual size (1)">100%</button>
       <button id="zoom-in" class="icon-button" title="Zoom in (+)">+</button>
       <button id="fit-width" class="text-button" title="Fit width (W)">Fit width</button>
       <button id="fit-all" class="text-button" title="Fit artboard (0)">Fit</button>
     </header>
+    <div id="screenshot-bar" hidden></div>
     <div id="viewport">
       <div id="canvas"></div>
       <svg id="overlay"></svg>
@@ -120,6 +123,16 @@ const board = new BoardView({
   onSelectionChange: () => renderArtboardList(),
 });
 
+const screenshots = new ScreenshotOverlay({
+  canvas: ui.canvas,
+  dropTarget: ui.viewport,
+  bar: byId('screenshot-bar'),
+  loadButton: byId('screenshot-load'),
+  artboardWidth: (id) => artboards.find((artboard) => artboard.id === id)?.width,
+  requestPick: (artboardId) => vscode.postMessage({ type: 'pickScreenshot', artboardId }),
+  notify: (text) => showToast(text, 4000),
+});
+
 if (state.sidebarHidden) {
   ui.app.classList.add('no-sidebar');
 }
@@ -138,6 +151,9 @@ window.addEventListener('message', (event: MessageEvent<HostMessage>) => {
       noteUndecodableImages(message.scenes);
       board.onScenes(message.scenes, message.failed);
       break;
+    case 'screenshot':
+      void screenshots.receive(message);
+      break;
     case 'error':
       showMessage(message.message);
       break;
@@ -149,6 +165,7 @@ function onDocument(name: string, list: ArtboardSummary[], layout: BoardLayout):
   fileName = name;
   document.title = name;
   ui.artboardCount.textContent = String(list.length);
+  screenshots.retain(new Set(list.map((artboard) => artboard.id)));
   board.setDocument(list, layout, state.boardPage);
   renderPageSelect();
   renderArtboardList();
@@ -218,6 +235,7 @@ function enterBoard(): void {
     board.addScene(scene);
   }
   setMode('board');
+  screenshots.show(null);
   ui.message.hidden = true;
   ui.warnings.hidden = true;
   hovered = null;
@@ -277,6 +295,7 @@ async function showArtboard(next: ArtboardScene, fit: boolean): Promise<void> {
 
   ui.message.hidden = true;
   ui.canvas.innerHTML = renderArtboardSvg(next, (uid) => imageUrls.get(uid));
+  screenshots.show(next.id);
   await document.fonts.ready;
   const svg = ui.canvas.querySelector<SVGSVGElement>('svg.dv-artboard');
   index = indexScene(next);

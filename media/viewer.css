@@ -704,3 +704,79 @@ button {
 .dv-board-title.active {
   color: var(--dv-select);
 }
+
+/* Screenshot overlay */
+
+#screenshot-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 32px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--dv-border);
+  white-space: nowrap;
+}
+
+#screenshot-bar[hidden] {
+  display: none;
+}
+
+.shot-name {
+  max-width: 160px;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.shot-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dv-dim);
+}
+
+.shot-value {
+  min-width: 36px;
+  color: var(--dv-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+#screenshot-scale {
+  height: 22px;
+  color: var(--dv-fg);
+  background: var(--dv-input);
+  border: 1px solid var(--dv-input-border);
+  border-radius: 2px;
+}
+
+#screenshot-opacity {
+  width: 90px;
+  margin: 0;
+  accent-color: var(--dv-select);
+}
+
+.text-button.toggle {
+  border-color: var(--dv-border);
+}
+
+.text-button.toggle[aria-pressed='true'] {
+  color: var(--dv-active-fg);
+  background: var(--dv-active);
+}
+
+/* VS Code's default webview styles limit images to their container; the overlay keeps its own size. */
+.dv-screenshot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  max-height: none;
+  transform-origin: 0 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dv-screenshot.difference {
+  mix-blend-mode: difference;
+}

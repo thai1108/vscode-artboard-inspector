@@ -1,8 +1,10 @@
-// Writes the files the VS Code suite opens: the synthetic demo .xd and a small synthetic .fig.
+// Writes the files the VS Code suite opens: the synthetic demo .xd, a small synthetic .fig and screenshots to overlay.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, truncateSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { SCREENSHOT_MAX_BYTES } from '../../src/screenshot.ts';
 import { at, buildFig, documentNodes, node, solid } from '../support/figFixture.ts';
+import { bandedPng } from '../support/png.ts';
 
 const out = path.resolve(import.meta.dirname, '../../dist-test/vscode/workspace');
 mkdirSync(out, { recursive: true });
@@ -16,4 +18,9 @@ writeFileSync(
     ]),
   ),
 );
+writeFileSync(path.join(out, 'login@2x.png'), bandedPng(780, 1688));
+writeFileSync(path.join(out, 'notes.png'), 'not an image');
+// Sparse, so the oversized file costs no disk space.
+writeFileSync(path.join(out, 'oversized.png'), '');
+truncateSync(path.join(out, 'oversized.png'), SCREENSHOT_MAX_BYTES + 1);
 console.log(`Wrote VS Code test fixtures to ${out}`);

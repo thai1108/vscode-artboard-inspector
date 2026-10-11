@@ -16,7 +16,7 @@ const EXTENSION_FOR_TYPE: Record<string, ExportExtension> = {
   'image/svg+xml': 'svg',
 };
 const PATH_CHARACTERS = /[\\/:*?"<>|]+/g;
-const INVISIBLE_CHARACTERS = /[\p{Cc}\p{Cs}‎‏‪-‮⁦-⁩]/gu;
+const INVISIBLE_CHARACTERS = /[\p{Cc}\p{Cs}\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 
 /** The layers from the top level down to `key`, or null when the scene has no such layer. */
 export function layerPath(scene: ArtboardScene, key: string): SceneNode[] | null {

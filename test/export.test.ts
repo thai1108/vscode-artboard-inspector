@@ -228,7 +228,7 @@ describe('exportFileName', () => {
     assert.equal(exportFileName('..', 'png'), 'layer.png');
     assert.equal(exportFileName('.bashrc', 'png'), 'bashrc.png');
     assert.equal(exportFileName('', 'png', '@3x'), 'layer@3x.png');
-    assert.equal(exportFileName('a\u0000b‮gnp.exe', 'png'), 'abgnp.exe.png');
+    assert.equal(exportFileName('a\u0000b\u202egnp.exe', 'png'), 'abgnp.exe.png');
     assert.equal(exportFileName('a\ud800b', 'png'), 'ab.png');
   });
 
@@ -250,7 +250,7 @@ describe('exportFileName', () => {
   });
 
   it('always produces a name the host accepts', () => {
-    const names = ['', ' ', '.', '..', '...', '/', '\\', 'a/../../b', '-rf', 'COM¹', 'lpt9.png', ' .x. ', '‮', '\u0007bell', 'x'.repeat(1000), '漢'.repeat(1000)];
+    const names = ['', ' ', '.', '..', '...', '/', '\\', 'a/../../b', '-rf', 'COM¹', 'lpt9.png', ' .x. ', '\u202e', '\u0007bell', 'x'.repeat(1000), '漢'.repeat(1000)];
     for (const name of names) {
       for (const extension of ['png', 'jpg', 'gif', 'webp', 'svg'] as const) {
         for (const suffix of ['', '@2x']) {

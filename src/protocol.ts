@@ -14,6 +14,8 @@ export type HostMessage =
   | { type: 'artboard'; scene: ArtboardScene; images: ImagePayload[] }
   /** Answer to loadArtboards (board view); artboards that failed to convert are listed in `failed`. */
   | { type: 'scenes'; scenes: ArtboardScene[]; images: ImagePayload[]; failed: { id: string; message: string }[] }
+  /** Answer to pickScreenshot: an image checked by screenshot.ts, to overlay on `artboardId`. */
+  | { type: 'screenshot'; artboardId: string; name: string; data: Uint8Array }
   | { type: 'error'; message: string };
 
 /** Webview → extension host. */
@@ -22,6 +24,7 @@ export type WebviewMessage =
   | { type: 'loadArtboard'; id: string; knownImages: string[] }
   | { type: 'loadArtboards'; ids: string[]; knownImages: string[] }
   | { type: 'copy'; text: string; label: string }
+  | { type: 'pickScreenshot'; artboardId: string }
   /** An exported layer or embedded image; the host asks the user where to save it. */
   | { type: 'save'; fileName: string; data: Uint8Array };
 
@@ -52,7 +55,7 @@ export const EXPORT_TYPES = {
 export type ExportExtension = keyof typeof EXPORT_TYPES;
 
 /** Path separators, characters Windows reserves, control and bidi characters, unpaired surrogates. */
-const UNSAFE_FILE_NAME_CHARACTERS = /[\\/:*?"<>|\p{Cc}\p{Cs}‎‏‪-‮⁦-⁩]/u;
+const UNSAFE_FILE_NAME_CHARACTERS = /[\\/:*?"<>|\p{Cc}\p{Cs}\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 /** Device names Windows reserves, also when followed by an extension ("NUL.txt.png"). */
 export const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i;
 
@@ -86,6 +89,13 @@ export function parseWebviewMessage(raw: unknown): WebviewMessage | null {
         return null;
       }
       return { type: 'copy', text, label };
+    }
+    case 'pickScreenshot': {
+      const { artboardId } = message;
+      if (!isString(artboardId, MESSAGE_LIMITS.idLength)) {
+        return null;
+      }
+      return { type: 'pickScreenshot', artboardId };
     }
     case 'save': {
       const { fileName, data } = message;

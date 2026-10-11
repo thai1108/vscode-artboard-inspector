@@ -91,6 +91,18 @@ window.acquireVsCodeApi = () => ({
       const received = deserializeInWebview(serializeForWebview(structuredClone(message)));
       (window.previewSaves ??= []).push(received);
       console.log('[save]', received.fileName, received.data?.byteLength);
+    } else if (message.type === 'pickScreenshot') {
+      // Stands in for the host's open dialog; the bytes are checked by the webview, as for a paste.
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg,image/webp';
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (file) {
+          post({ type: 'screenshot', artboardId: message.artboardId, name: file.name, data: new Uint8Array(await file.arrayBuffer()) });
+        }
+      });
+      input.click();
     }
   },
   getState: () => JSON.parse(sessionStorage.getItem('dv-state') || 'null') ?? undefined,

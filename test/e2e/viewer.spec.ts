@@ -5,6 +5,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { imageSize } from '../../src/image.ts';
+import { bandedPng } from '../support/png.ts';
 import { decodePng, exportButton, exportWith, expectStandaloneSvg, findExportLayers, openSvg, originalImage, selectLayerByKey, type SavedFile } from './exportChecks.ts';
 import { buildSampleXd, servePreview, type PreviewSite } from './preview-server.ts';
 
@@ -75,6 +76,38 @@ function layerRowIn(page: Page, groupName: string, layerName: string) {
   return page.locator(`#layers li.layer:has(> .layer-row:has-text("${groupName}")) .layer-row`, { hasText: layerName });
 }
 
+/** Where the overlay image sits relative to the artboard, in design pixels at the current zoom. */
+async function overlayPlacement(page: Page, artboardWidth: number) {
+  return page.evaluate((designWidth) => {
+    const artboard = document.querySelector('#canvas svg.dv-artboard')?.getBoundingClientRect();
+    const shot = document.querySelector('#canvas img.dv-screenshot')?.getBoundingClientRect();
+    if (!artboard || !shot) {
+      throw new Error('artboard or screenshot missing');
+    }
+    const zoom = artboard.width / designWidth;
+    return { zoom, x: (shot.x - artboard.x) / zoom, y: (shot.y - artboard.y) / zoom, width: shot.width / zoom, height: shot.height / zoom };
+  }, artboardWidth);
+}
+
+/**
+ * VS Code injects a default stylesheet into every webview (webview/browser/pre/index.html in VS Code 1.141); its image
+ * rule would shrink an overlay taller than the artboard. Adopted, because the page's CSP refuses inline styles.
+ */
+async function adoptVsCodeImageDefaults(page: Page) {
+  await page.evaluate(() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync('@layer vscode-default { img, video { max-width: 100%; max-height: 100%; } }');
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  });
+}
+
+async function expectOverlayAt(page: Page, expected: { x: number; y: number; width: number; height: number }) {
+  const placement = await overlayPlacement(page, 430);
+  for (const key of ['x', 'y', 'width', 'height'] as const) {
+    expect(Math.abs(placement[key] - expected[key]), `${key} at zoom ${placement.zoom.toFixed(3)}: ${placement[key]}`).toBeLessThan(0.5);
+  }
+}
+
 test.describe('synthetic demo', () => {
   let site: PreviewSite;
 
@@ -115,6 +148,125 @@ test.describe('synthetic demo', () => {
       expect(artboard.y).toBeGreaterThanOrEqual(viewport.y);
     }
     await expect(page.locator('#zoom-value')).not.toHaveText('100%');
+    expect(problems).toEqual([]);
+  });
+
+  test('screenshot overlay: load, opacity, difference, nudge, zoom alignment, per artboard, remove', async ({ page }) => {
+    const problems = watchProblems(page);
+    await page.goto(site.url);
+    await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
+    await expect(page.locator('#screenshot-bar')).toBeHidden();
+    await adoptVsCodeImageDefaults(page);
+
+    // A 2x capture of the 430 × 932 artboard.
+    const chooser = page.waitForEvent('filechooser');
+    await page.locator('#screenshot-load').click();
+    await (await chooser).setFiles({ name: 'home@2x.png', mimeType: 'image/png', buffer: bandedPng(860, 1864) });
+    await expect(page.locator('#screenshot-bar')).toBeVisible();
+    await expect(page.locator('#screenshot-name')).toHaveText('home@2x.png');
+    await expect(page.locator('#screenshot-scale')).toHaveValue('2');
+    const shot = page.locator('#canvas img.dv-screenshot');
+    await expect(shot).toBeVisible();
+    await expect(shot).toHaveCSS('opacity', '0.5');
+    await expect(shot).toHaveCSS('pointer-events', 'none');
+    await expectOverlayAt(page, { x: 0, y: 0, width: 430, height: 932 });
+
+    await page.locator('#screenshot-opacity').fill('80');
+    await expect(shot).toHaveCSS('opacity', '0.8');
+    await expect(page.locator('#screenshot-opacity-value')).toHaveText('80%');
+    await page.locator('#screenshot-blend').click();
+    await expect(shot).toHaveCSS('mix-blend-mode', 'difference');
+    await expect(page.locator('#screenshot-blend')).toHaveAttribute('aria-pressed', 'true');
+
+    // Layers are still picked and measured through the screenshot.
+    const button = await page.locator('#canvas svg.dv-artboard').boundingBox();
+    expect(button).toBeTruthy();
+    const zoom = (button?.width ?? 430) / 430;
+    await page.mouse.click((button?.x ?? 0) + 40 * zoom, (button?.y ?? 0) + 738 * zoom);
+    await expect(page.locator('.insp-title')).toHaveText('Button background');
+
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('Shift+ArrowDown');
+    await page.keyboard.press('ArrowUp');
+    await expect(page.locator('#screenshot-offset')).toHaveText('3, 9');
+    await expectOverlayAt(page, { x: 3, y: 9, width: 430, height: 932 });
+    for (const key of ['1', '+', '+', '-', 'w', '0']) {
+      await page.keyboard.press(key);
+      await expectOverlayAt(page, { x: 3, y: 9, width: 430, height: 932 });
+    }
+    await page.locator('#viewport').hover();
+    await page.mouse.wheel(0, 120);
+    await expectOverlayAt(page, { x: 3, y: 9, width: 430, height: 932 });
+
+    await page.locator('#screenshot-scale').selectOption('1');
+    await expectOverlayAt(page, { x: 3, y: 9, width: 860, height: 1864 });
+    await page.locator('#screenshot-scale').selectOption('2');
+
+    await page.locator('#screenshot-visible').click();
+    await expect(shot).toBeHidden();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.locator('#screenshot-offset')).toHaveText('3, 9');
+    await page.locator('#screenshot-visible').click();
+    await expect(shot).toBeVisible();
+
+    await page.locator('#artboards .artboard-item', { hasText: 'Cart' }).click();
+    await expect(page.locator('#artboard-title')).toHaveText('Cart 430 × 932');
+    await expect(page.locator('#screenshot-bar')).toBeHidden();
+    await expect(shot).toHaveCount(0);
+    await page.locator('#artboards .artboard-item', { hasText: 'Home' }).click();
+    await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
+    await expect(page.locator('#screenshot-offset')).toHaveText('3, 9');
+    await expect(shot).toHaveCSS('opacity', '0.8');
+
+    await page.locator('#mode-board').click();
+    await expect(page.locator('#screenshot-load')).toBeHidden();
+    await expect(shot).toHaveCount(0);
+    await page.keyboard.press('b');
+    await expect(shot).toBeVisible();
+
+    await page.locator('#screenshot-remove').click();
+    await expect(page.locator('#screenshot-bar')).toBeHidden();
+    await expect(shot).toHaveCount(0);
+    expect(problems).toEqual([]);
+  });
+
+  test('screenshot overlay: paste, drop, refuse files that are not images', async ({ page }) => {
+    const problems = watchProblems(page);
+    await page.goto(site.url);
+    await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
+
+    await page.evaluate((base64) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(new File([bytes], 'image.png', { type: 'image/png' }));
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    }, bandedPng(430, 932).toString('base64'));
+    await expect(page.locator('#screenshot-name')).toHaveText('image.png');
+    await expect(page.locator('#screenshot-scale')).toHaveValue('1');
+    await expectOverlayAt(page, { x: 0, y: 0, width: 430, height: 932 });
+
+    const dropped = await page.evaluate((base64) => {
+      const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(new File([bytes], 'dropped@3x.png', { type: 'image/png' }));
+      const canvas = document.getElementById('canvas');
+      const over = new DragEvent('dragover', { dataTransfer, bubbles: true, cancelable: true });
+      canvas?.dispatchEvent(over);
+      canvas?.dispatchEvent(new DragEvent('drop', { dataTransfer, bubbles: true, cancelable: true }));
+      return over.defaultPrevented;
+    }, bandedPng(1290, 600).toString('base64'));
+    expect(dropped, 'dragover is cancelled so the drop reaches the webview').toBe(true);
+    await expect(page.locator('#screenshot-name')).toHaveText('dropped@3x.png');
+    await expect(page.locator('#screenshot-scale')).toHaveValue('3');
+    await expectOverlayAt(page, { x: 0, y: 0, width: 430, height: 200 });
+
+    const chooser = page.waitForEvent('filechooser');
+    await page.locator('#screenshot-load').click();
+    await (await chooser).setFiles({ name: 'notes.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
+    await expect(page.locator('#toast')).toHaveText('notes.png is not a PNG, JPEG or WebP image');
+    await expect(page.locator('#screenshot-name')).toHaveText('dropped@3x.png');
     expect(problems).toEqual([]);
   });
 
