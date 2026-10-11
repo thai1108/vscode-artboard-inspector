@@ -126,6 +126,17 @@ describe('webview with an .xd document (happy-dom)', () => {
     assert.match(copied?.text ?? '', /border: 1px solid #E5E7EB;/);
   });
 
+  it('shows the Tailwind classes after the CSS and copies them through the host', () => {
+    const shown = host.$('#inspector pre.tailwind').textContent ?? '';
+    assert.match(shown, / bg-\[#FFFFFF\] border border-\[#E5E7EB\] rounded-xl$/);
+    const button = host.$$('#inspector [data-copy]').find((element) => element.getAttribute('data-label') === 'Tailwind classes');
+    assert.ok(button);
+    assert.equal(button.textContent, 'Copy Tailwind');
+    host.click(button);
+    assert.deepEqual(host.last('copy'), { type: 'copy', text: shown, label: 'Tailwind classes' });
+    assert.equal(host.$('#toast').textContent, 'Copied Tailwind classes');
+  });
+
   it('walks up with breadcrumbs and Escape', () => {
     const crumb = host.$$('.crumbs .crumb').find((element) => element.textContent === 'Card');
     assert.ok(crumb);
