@@ -41,6 +41,14 @@ pnpm package                       # runs all checks, writes artboard-inspector-
 code --install-extension artboard-inspector-0.2.0.vsix
 ```
 
+## Releasing
+
+1. Bump `version` in `package.json` and add a matching `## <version>` section to `CHANGELOG.md`; merge to `main`.
+2. Push a tag `v<version>` (e.g. `git tag v0.3.0 && git push origin v0.3.0`). The *Release* workflow checks that the
+   tag matches `package.json`, runs `pnpm check` and `pnpm package`, and creates a GitHub Release with the `.vsix`
+   attached and the CHANGELOG section as notes.
+3. Download the `.vsix` from the release and upload it to the Marketplace by hand.
+
 ## Shortcuts (canvas focused)
 
 | Key | Action |
