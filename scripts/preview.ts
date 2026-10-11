@@ -103,6 +103,18 @@ window.acquireVsCodeApi = () => ({
       post(previewPayload.searchMessage(await searchIndex, message.query, message.seq));
     } else if (message.type === 'copy') {
       console.log('[copy]', message.label, message.text);
+    } else if (message.type === 'pickScreenshot') {
+      // Stands in for the host's open dialog; the bytes are checked by the webview, as for a paste.
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/png,image/jpeg,image/webp';
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (file) {
+          post({ type: 'screenshot', artboardId: message.artboardId, name: file.name, data: new Uint8Array(await file.arrayBuffer()) });
+        }
+      });
+      input.click();
     }
   },
   getState: () => JSON.parse(sessionStorage.getItem('dv-state') || 'null') ?? undefined,

@@ -16,6 +16,8 @@ export type HostMessage =
   | { type: 'scenes'; scenes: ArtboardScene[]; images: ImagePayload[]; failed: { id: string; message: string }[] }
   /** Answer to search; `seq` is the request's, so the webview can drop answers to queries it has moved past. */
   | { type: 'searchResults'; seq: number; hits: SearchHit[]; total: number; searched: number; error?: string }
+  /** Answer to pickScreenshot: an image checked by screenshot.ts, to overlay on `artboardId`. */
+  | { type: 'screenshot'; artboardId: string; name: string; data: Uint8Array }
   | { type: 'error'; message: string };
 
 /** Webview → extension host. */
@@ -24,7 +26,8 @@ export type WebviewMessage =
   | { type: 'loadArtboard'; id: string; knownImages: string[] }
   | { type: 'loadArtboards'; ids: string[]; knownImages: string[] }
   | { type: 'copy'; text: string; label: string }
-  | { type: 'search'; query: string; seq: number };
+  | { type: 'search'; query: string; seq: number }
+  | { type: 'pickScreenshot'; artboardId: string };
 
 export const MESSAGE_LIMITS = {
   idLength: 512,
@@ -75,6 +78,13 @@ export function parseWebviewMessage(raw: unknown): WebviewMessage | null {
         return null;
       }
       return { type: 'search', query, seq };
+    }
+    case 'pickScreenshot': {
+      const { artboardId } = message;
+      if (!isString(artboardId, MESSAGE_LIMITS.idLength)) {
+        return null;
+      }
+      return { type: 'pickScreenshot', artboardId };
     }
     default:
       return null;

@@ -1,7 +1,9 @@
 // Runs inside a real VS Code extension host (pnpm test:vscode): the custom editors must open the sample files.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { readScreenshot } from '../../src/openScreenshot.ts';
 
 // Mocha's TDD globals, provided by @vscode/test-cli inside the extension host.
 declare function suite(name: string, body: () => void): void;
@@ -82,5 +84,25 @@ suite('Artboard Inspector in VS Code', () => {
     const tab = await openByDefault(uri);
     assert.equal(tab.viewType, 'artboardInspector.fig');
     assert.equal(tab.uri.fsPath, uri.fsPath);
+  });
+
+  test('reads a screenshot to overlay through the VS Code file system as a plain Uint8Array', async () => {
+    const file = workspacePath('login@2x.png');
+    const message = await readScreenshot(vscode.Uri.file(file), '1:10');
+    assert.equal(message.type, 'screenshot');
+    if (message.type === 'screenshot') {
+      assert.equal(message.artboardId, '1:10');
+      assert.equal(message.name, 'login@2x.png');
+      // A Node Buffer would reach the webview as { type: 'Buffer', data: [...] } (see payload.ts).
+      assert.equal(message.data.constructor, Uint8Array);
+      assert.equal(message.data.buffer.byteLength, message.data.byteLength);
+      assert.ok(Buffer.from(message.data).equals(readFileSync(file)));
+    }
+  });
+
+  test('refuses screenshots that are not images or are too large', async () => {
+    await assert.rejects(readScreenshot(vscode.Uri.file(workspacePath('notes.png')), '1:10'), /notes\.png is not a PNG, JPEG or WebP image/);
+    await assert.rejects(readScreenshot(vscode.Uri.file(workspacePath('oversized.png')), '1:10'), /oversized\.png is too large to overlay \(50 MB; limit 50 MB\)/);
+    await assert.rejects(readScreenshot(vscode.Uri.file(workspacePath('missing.png')), '1:10'));
   });
 });

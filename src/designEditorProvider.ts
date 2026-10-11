@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { DesignDocument } from './document.ts';
 import { openDesignDocument } from './openDocument.ts';
+import { pickScreenshot } from './openScreenshot.ts';
 import { artboardMessage, scenesMessage, searchMessage } from './payload.ts';
 import { parseWebviewMessage, type HostMessage } from './protocol.ts';
 import { buildSearchIndex, type SearchIndex } from './search.ts';
@@ -142,6 +143,16 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
             );
             break;
           }
+          case 'pickScreenshot':
+            void pickScreenshot(message.artboardId).then(
+              (reply) => {
+                if (reply) {
+                  post(reply);
+                }
+              },
+              (error: unknown) => void vscode.window.showErrorMessage(`Could not overlay the screenshot: ${(error as Error).message}`),
+            );
+            break;
         }
       }),
     ];
