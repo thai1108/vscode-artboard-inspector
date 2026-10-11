@@ -3,6 +3,7 @@ import { fmt, type Box } from '../render/geometry.ts';
 import { roundAlpha, toCssColor, toHex } from '../scene/color.ts';
 import type { ArtboardScene, Paint, Rgba, SceneNode, Stroke, TextNode, TextStyle } from '../scene/scene.ts';
 import { escapeHtml } from '../render/html.ts';
+import { tailwindForNode, type TailwindBlock } from '../render/tailwind.ts';
 import { fontsUsed, isFontAvailable } from './fonts.ts';
 import { displayName, kindLabel } from './layers.ts';
 
@@ -96,7 +97,7 @@ function nodeInspector(ctx: InspectorContext, node: SceneNode): string {
     );
   }
   if (ctx.box) {
-    parts.push(cssSection(node, ctx.box));
+    parts.push(cssSection(node, ctx.box), tailwindSection(node, ctx.box));
   }
   return parts.join('');
 }
@@ -164,6 +165,21 @@ function cssSection(node: SceneNode, box: Box): string {
     `<pre class="css">${escapeHtml(text)}</pre>` +
     `<button class="action" data-copy="${escapeHtml(text)}" data-label="CSS">Copy CSS</button>`;
   return section('CSS', body);
+}
+
+/** Same blocks and labels as the CSS section, so mixed-style text reads the same way in both. */
+function tailwindSection(node: SceneNode, box: Box): string {
+  const blocks = tailwindForNode(node, box);
+  const label = (block: TailwindBlock) => (block.label ? `/* ${block.label} */\n` : '');
+  const text = blocks.map((block) => label(block) + block.classes.join(' ')).join('\n\n');
+  // One element per class, so lines wrap between classes rather than after a hyphen inside one.
+  const shown = blocks
+    .map((block) => escapeHtml(label(block)) + block.classes.map((name) => `<span class="tw-class">${escapeHtml(name)}</span>`).join(' '))
+    .join('\n\n');
+  const body =
+    `<pre class="tailwind">${shown}</pre>` +
+    `<button class="action" data-copy="${escapeHtml(text)}" data-label="Tailwind classes">Copy Tailwind</button>`;
+  return section('Tailwind', body);
 }
 
 function breadcrumbs(scene: ArtboardScene, ancestors: SceneNode[]): string {

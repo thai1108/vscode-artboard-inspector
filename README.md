@@ -5,7 +5,7 @@
 Open Adobe XD (`.xd`) files and Figma local copies (`.fig`) in VS Code and inspect them like a developer handoff tool.
 
 - Artboard list with filter, layer tree, zoom/pan canvas
-- Click a layer to see position, size, fill, border, radius, shadow, typography and generated CSS; click any value to copy it
+- Click a layer to see position, size, fill, border, radius, shadow, typography, generated CSS and Tailwind classes; click any value to copy it
 - With a layer selected, hover another one (or the artboard background) to see the spacing redlines
 - Board view: every artboard at its position in the file, inspect and measure across artboards
 - Reloads automatically when the file changes on disk
@@ -23,6 +23,14 @@ Only artboards near the screen and large enough to read are drawn in full, so fi
 responsive.
 
 ![Board view: measuring from a layer in one artboard to a layer in another](images/board.png)
+
+## Tailwind classes
+
+Next to the CSS, the inspector lists Tailwind CSS v4 classes for the selected layer, written from the same values.
+Default-theme utilities are used only when they give exactly the design's value (`size-10`, `rounded-xl`, `text-sm`
+for 14px/20px, `font-bold`, `tracking-wide`; lengths on the 4px grid). Anything else, and every color, shadow and
+gradient, is an arbitrary value (`w-[191px]`, `text-[#CA4343]`, `shadow-[0_2px_8px_rgba(0,0,0,0.08)]`). A project's
+own Tailwind theme is not read.
 
 ## Figma files (.fig)
 

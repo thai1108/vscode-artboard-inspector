@@ -14,6 +14,11 @@ function inspect(node: SceneNode | null, overrides: Partial<InspectorContext> = 
   return renderInspector({ scene: artboard([]), node, box: node ? BOX : null, ancestors: [], layerCount: 0, ...overrides });
 }
 
+/** The Tailwind block as shown, with each class marked as [class]. */
+function shownTailwind(html: string): string {
+  return (/<pre class="tailwind">([^]*?)<\/pre>/.exec(html)?.[1] ?? '').replace(/<span class="tw-class">([^<]*)<\/span>/g, '[$1]');
+}
+
 /** Text content of every element with the given class, in order. */
 function texts(html: string, className: string): string[] {
   return [...html.matchAll(new RegExp(`class="${className}"[^>]*>([^<]*)<`, 'g'))].map((match) => match[1] ?? '');
@@ -66,6 +71,27 @@ describe('renderInspector for layers', () => {
     assert.match(html, /<span class="dim">8%<\/span>/);
     assert.match(html, /<pre class="css">width: 191px;\nheight: 236px;\nbackground: #FFFFFF;\nborder: 1px dashed #E5E7EB;\nborder-radius: 12px;\nbox-shadow: 0 2px 8px rgba\(0, 0, 0, 0.08\);<\/pre>/);
     assert.match(html, /data-label="CSS">Copy CSS<\/button>/);
+    const tailwind = 'w-[191px] h-59 bg-[#FFFFFF] border border-dashed border-[#E5E7EB] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.08)]';
+    assert.equal(shownTailwind(html), tailwind.split(' ').map((name) => `[${name}]`).join(' '));
+    assert.match(html, /<h3>CSS<\/h3>[^]*<h3>Tailwind<\/h3><pre class="tailwind">/);
+    assert.ok(html.includes(`<button class="action" data-copy="${tailwind}" data-label="Tailwind classes">Copy Tailwind</button>`));
+  });
+
+  it('labels the Tailwind classes of each text style like the CSS blocks and escapes them', () => {
+    const node = text({
+      lineHeight: 20,
+      styles: [textStyle({ size: 14 }), textStyle({ size: 14, weight: 700, fontStyle: 'Bold', family: 'Sans <b> & Co' })],
+      lines: [{ x: 0, y: 16, runs: [{ text: 'Total ', style: 0 }, { text: '$42', style: 1 }] }],
+    });
+    const html = inspect(node);
+    const expected = "/* Total  */\nfont-['Noto_Sans'] text-sm font-medium text-[#333333]\n\n/* $42 */\nfont-['Sans_<b>_&_Co'] text-sm font-bold text-[#333333]";
+    const escaped = expected.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll("'", '&#39;');
+    assert.equal(
+      shownTailwind(html),
+      "/* Total  */\n[font-[&#39;Noto_Sans&#39;]] [text-sm] [font-medium] [text-[#333333]]\n\n/* $42 */\n[font-[&#39;Sans_&lt;b&gt;_&amp;_Co&#39;]] [text-sm] [font-bold] [text-[#333333]]",
+    );
+    assert.ok(html.includes(`data-copy="${escaped}" data-label="Tailwind classes"`));
+    assert.doesNotMatch(html, /<b>/);
   });
 
   it('shows rotation and opacity', () => {

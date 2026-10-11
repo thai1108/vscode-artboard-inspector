@@ -115,6 +115,40 @@ test.describe('synthetic demo', () => {
     expect(problems).toEqual([]);
   });
 
+  test('inspector: Tailwind classes next to the CSS for shapes and text, copied through the host', async ({ page }) => {
+    const problems = watchProblems(page);
+    const copies: string[] = [];
+    page.on('console', (message) => {
+      if (message.text().startsWith('[copy]')) {
+        copies.push(message.text());
+      }
+    });
+    await page.goto(site.url);
+    await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
+    await page.locator('#layers .layer-row', { hasText: 'Card / Ceramic Mug' }).locator('[data-toggle]').click();
+    const css = page.locator('#inspector pre.css');
+    const tailwind = page.locator('#inspector pre.tailwind');
+
+    await layerRowIn(page, 'Card / Ceramic Mug', 'Card background').click();
+    await expect(css).toHaveText(
+      'width: 191px;\nheight: 236px;\nbackground: #FFFFFF;\nborder: 1px solid #E5E7EB;\nborder-radius: 12px;\nbox-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);',
+    );
+    await expect(tailwind).toHaveText('w-[191px] h-59 bg-[#FFFFFF] border border-[#E5E7EB] rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.08)]');
+    await page.locator('#inspector button', { hasText: 'Copy Tailwind' }).click();
+    await expect(page.locator('#toast')).toHaveText('Copied Tailwind classes');
+    await expect.poll(() => copies.at(-1)).toBe(`[copy] Tailwind classes ${await tailwind.textContent()}`);
+
+    await layerRowIn(page, 'Card / Ceramic Mug', 'Thumbnail').click();
+    await expect(css).toContainText('background: linear-gradient(180deg, #DBEAFE 0%, #93C5FD 100%);');
+    await expect(tailwind).toHaveText('w-[167px] h-32 bg-[linear-gradient(180deg,#DBEAFE_0%,#93C5FD_100%)] rounded-lg');
+
+    await layerRowIn(page, 'Card / Ceramic Mug', '$18.00').click();
+    await expect(page.locator('.insp-kind')).toHaveText('Text');
+    await expect(css).toContainText('font-size: 16px;\nfont-weight: 700; /* Bold */\ncolor: #2563EB;');
+    await expect(tailwind).toHaveText("font-['Helvetica_Neue'] text-[16px] font-bold text-[#2563EB]");
+    expect(problems).toEqual([]);
+  });
+
   test('board view: all artboards with titles and images, inspect on the board, double-click back', async ({ page }) => {
     const problems = watchProblems(page);
     await page.goto(site.url);
