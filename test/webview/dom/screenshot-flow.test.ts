@@ -126,6 +126,7 @@ describe('screenshot overlay in the webview (happy-dom)', () => {
     assert.equal(image()?.style.transform, 'translate(1px, 9px) scale(0.5)');
 
     keydown('ArrowRight', { target: host.$('#artboard-filter') });
+    keydown('ArrowDown', { target: host.$('#search') });
     keydown('ArrowRight', { target: host.$('#screenshot-scale') });
     host.click(host.$('#screenshot-visible'));
     keydown('ArrowRight');

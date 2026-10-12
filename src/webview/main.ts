@@ -5,6 +5,7 @@ import { measureBetween, type Guide } from '../render/measure.ts';
 import { renderArtboardSvg } from '../render/svg.ts';
 import { fmt, type Box } from '../render/geometry.ts';
 import type { ArtboardScene, ArtboardSummary, SceneNode } from '../scene/scene.ts';
+import type { SearchHit } from '../search.ts';
 import { BoardView } from './board.ts';
 import { indexScene, measureLayers, type IndexedNode } from './bounds.ts';
 import { escapeHtml } from '../render/html.ts';
@@ -14,14 +15,22 @@ import { renderInspector } from './inspector.ts';
 import { renderLayerTree } from './layers.ts';
 import { drawOverlay } from './overlay.ts';
 import { ScreenshotOverlay } from './screenshot.ts';
+import { SearchPanel } from './search.ts';
 import { isTyping, Viewport } from './viewport.ts';
 import { vscode } from './vscodeApi.ts';
 
 /** Selection key of the artboard itself. */
 const ARTBOARD = '';
+const isMac = navigator.userAgent.includes('Mac');
 
 byId('app').innerHTML = `
   <aside id="sidebar">
+    <section class="pane" id="search-pane">
+      <div class="pane-title">Search</div>
+      <input id="search" type="search" placeholder="Text and layer names (${isMac ? '⌘F' : 'Ctrl+F'})" spellcheck="false" aria-controls="search-results">
+      <div id="search-status" class="dim" hidden></div>
+      <ul id="search-results" role="listbox" aria-label="Search results" hidden></ul>
+    </section>
     <section class="pane">
       <div class="pane-title">Artboards <span id="artboard-count" class="dim"></span></div>
       <input id="artboard-filter" type="search" placeholder="Filter artboards" spellcheck="false">
@@ -86,12 +95,15 @@ const ui = {
 type Mode = 'artboard' | 'board';
 
 let artboards: ArtboardSummary[] = [];
+let artboardsById = new Map<string, ArtboardSummary>();
 let fileName = '';
 let scene: ArtboardScene | null = null;
 let index = new Map<string, IndexedNode>();
 let boxes = new Map<string, Box>();
 let selected: string | null = null;
 let hovered: string | null = null;
+/** Layer to select once its artboard is shown (a search hit in another artboard). */
+let pendingLayer: { artboard: string; key: string } | null = null;
 const imageUrls = new Map<string, string>();
 /** The blobs behind imageUrls, kept for exports (the CSP blocks fetching blob: URLs). */
 const imageBlobs = new Map<string, Blob>();
@@ -123,6 +135,16 @@ const board = new BoardView({
   onSelectionChange: () => renderArtboardList(),
 });
 
+const search = new SearchPanel({
+  input: byId<HTMLInputElement>('search'),
+  status: byId('search-status'),
+  results: byId('search-results'),
+  requestSearch: (query, seq) => vscode.postMessage({ type: 'search', query, seq }),
+  artboardName: (id) => artboardsById.get(id)?.name,
+  artboardCount: () => artboards.length,
+  open: openSearchHit,
+});
+
 const screenshots = new ScreenshotOverlay({
   canvas: ui.canvas,
   dropTarget: ui.viewport,
@@ -151,6 +173,9 @@ window.addEventListener('message', (event: MessageEvent<HostMessage>) => {
       noteUndecodableImages(message.scenes);
       board.onScenes(message.scenes, message.failed);
       break;
+    case 'searchResults':
+      search.onResults(message);
+      break;
     case 'screenshot':
       void screenshots.receive(message);
       break;
@@ -162,6 +187,7 @@ window.addEventListener('message', (event: MessageEvent<HostMessage>) => {
 
 function onDocument(name: string, list: ArtboardSummary[], layout: BoardLayout): void {
   artboards = list;
+  artboardsById = new Map(list.map((artboard) => [artboard.id, artboard]));
   fileName = name;
   document.title = name;
   ui.artboardCount.textContent = String(list.length);
@@ -169,6 +195,7 @@ function onDocument(name: string, list: ArtboardSummary[], layout: BoardLayout):
   board.setDocument(list, layout, state.boardPage);
   renderPageSelect();
   renderArtboardList();
+  search.refresh();
   if (!list.length) {
     showMessage('This file has no artboards.');
     return;
@@ -316,7 +343,31 @@ async function showArtboard(next: ArtboardScene, fit: boolean): Promise<void> {
   if (!sameArtboard) {
     viewport.fitWidth();
   }
+  if (pendingLayer?.artboard === next.id) {
+    const { key } = pendingLayer;
+    pendingLayer = null;
+    if (index.has(key)) {
+      select(key, { reveal: true });
+      return;
+    }
+  }
   refreshSelection();
+}
+
+function openSearchHit(hit: SearchHit): void {
+  if (mode === 'artboard' && scene?.id === hit.artboard) {
+    pendingLayer = null;
+    if (index.has(hit.key)) {
+      select(hit.key, { reveal: true });
+    }
+    return;
+  }
+  pendingLayer = { artboard: hit.artboard, key: hit.key };
+  if (mode === 'board') {
+    enterArtboard(hit.artboard);
+  } else {
+    requestArtboard(hit.artboard);
+  }
 }
 
 function renderArtboardList(): void {
@@ -555,6 +606,11 @@ ui.boardPage.addEventListener('change', () => {
 });
 
 window.addEventListener('keydown', (event) => {
+  if ((event.key === 'f' || event.key === 'F') && (isMac ? event.metaKey : event.ctrlKey) && !event.altKey && !event.shiftKey) {
+    event.preventDefault();
+    search.focus();
+    return;
+  }
   if (isTyping(event) || event.metaKey || event.ctrlKey || event.altKey) {
     return;
   }

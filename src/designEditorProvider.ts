@@ -4,9 +4,10 @@ import * as vscode from 'vscode';
 import type { DesignDocument } from './document.ts';
 import { openDesignDocument } from './openDocument.ts';
 import { pickScreenshot } from './openScreenshot.ts';
-import { artboardMessage, scenesMessage } from './payload.ts';
+import { artboardMessage, scenesMessage, searchMessage } from './payload.ts';
 import { parseWebviewMessage, type HostMessage } from './protocol.ts';
 import { saveExport, type SaveDeps } from './saveExport.ts';
+import { buildSearchIndex, type SearchIndex } from './search.ts';
 
 const RELOAD_DEBOUNCE_MS = 500;
 const MAX_FILE_SIZE = 300 * 1024 * 1024;
@@ -39,6 +40,7 @@ class DesignCustomDocument implements vscode.CustomDocument {
   readonly onDidChange = this.changed.event;
   private readonly watcher: vscode.FileSystemWatcher;
   private reloadTimer: NodeJS.Timeout | undefined;
+  private index: Promise<SearchIndex> | undefined;
 
   private constructor(uri: vscode.Uri, design: DesignDocument) {
     this.uri = uri;
@@ -58,6 +60,12 @@ class DesignCustomDocument implements vscode.CustomDocument {
     return this.current;
   }
 
+  /** Built on the first search and shared by every editor of the file until it changes on disk. */
+  searchIndex(): Promise<SearchIndex> {
+    this.index ??= buildSearchIndex(this.current);
+    return this.index;
+  }
+
   private scheduleReload(): void {
     clearTimeout(this.reloadTimer);
     this.reloadTimer = setTimeout(() => void this.reload(), RELOAD_DEBOUNCE_MS);
@@ -66,6 +74,7 @@ class DesignCustomDocument implements vscode.CustomDocument {
   private async reload(): Promise<void> {
     try {
       this.current = await readDesign(this.uri);
+      this.index = undefined;
       this.changed.fire();
     } catch (error) {
       void vscode.window.showWarningMessage(
@@ -138,6 +147,14 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
             void vscode.env.clipboard.writeText(message.text);
             vscode.window.setStatusBarMessage(`Copied ${message.label}`, 2000);
             break;
+          case 'search': {
+            const { query, seq } = message;
+            document.searchIndex().then(
+              (index) => post(searchMessage(index, query, seq)),
+              (error: unknown) => post({ type: 'searchResults', seq, hits: [], total: 0, searched: 0, error: (error as Error).message }),
+            );
+            break;
+          }
           case 'pickScreenshot':
             void pickScreenshot(message.artboardId).then(
               (reply) => {

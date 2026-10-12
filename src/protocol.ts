@@ -1,6 +1,7 @@
 import { sniffImageMime } from './image.ts';
 import type { BoardLayout } from './scene/board.ts';
 import type { ArtboardScene, ArtboardSummary } from './scene/scene.ts';
+import type { SearchHit } from './search.ts';
 
 export interface ImagePayload {
   uid: string;
@@ -14,6 +15,8 @@ export type HostMessage =
   | { type: 'artboard'; scene: ArtboardScene; images: ImagePayload[] }
   /** Answer to loadArtboards (board view); artboards that failed to convert are listed in `failed`. */
   | { type: 'scenes'; scenes: ArtboardScene[]; images: ImagePayload[]; failed: { id: string; message: string }[] }
+  /** Answer to search; `seq` is the request's, so the webview can drop answers to queries it has moved past. */
+  | { type: 'searchResults'; seq: number; hits: SearchHit[]; total: number; searched: number; error?: string }
   /** Answer to pickScreenshot: an image checked by screenshot.ts, to overlay on `artboardId`. */
   | { type: 'screenshot'; artboardId: string; name: string; data: Uint8Array }
   | { type: 'error'; message: string };
@@ -24,6 +27,7 @@ export type WebviewMessage =
   | { type: 'loadArtboard'; id: string; knownImages: string[] }
   | { type: 'loadArtboards'; ids: string[]; knownImages: string[] }
   | { type: 'copy'; text: string; label: string }
+  | { type: 'search'; query: string; seq: number }
   | { type: 'pickScreenshot'; artboardId: string }
   /** An exported layer or embedded image; the host asks the user where to save it. */
   | { type: 'save'; fileName: string; data: Uint8Array };
@@ -37,6 +41,9 @@ export const MESSAGE_LIMITS = {
   knownImages: 10_000,
   copyTextLength: 1024 * 1024,
   labelLength: 200,
+  searchQueryLength: 200,
+  /** Hits per searchResults answer. */
+  searchResults: 200,
   saveBytes: 64 * 1024 * 1024,
   /** In UTF-8 bytes; most file systems allow 255 per name. */
   fileNameBytes: 240,
@@ -89,6 +96,13 @@ export function parseWebviewMessage(raw: unknown): WebviewMessage | null {
         return null;
       }
       return { type: 'copy', text, label };
+    }
+    case 'search': {
+      const { query, seq } = message;
+      if (!isString(query, MESSAGE_LIMITS.searchQueryLength) || typeof seq !== 'number' || !Number.isSafeInteger(seq) || seq < 0) {
+        return null;
+      }
+      return { type: 'search', query, seq };
     }
     case 'pickScreenshot': {
       const { artboardId } = message;

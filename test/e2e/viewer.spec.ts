@@ -335,6 +335,44 @@ test.describe('synthetic demo', () => {
     expect(problems).toEqual([]);
   });
 
+  test('search: finds text in another artboard, opens it and selects the layer', async ({ page }) => {
+    const problems = watchProblems(page);
+    await page.goto(site.url);
+    await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
+
+    await page.keyboard.press('ControlOrMeta+f');
+    await expect(page.locator('#search')).toBeFocused();
+    await page.keyboard.type('ＤＩＳＨＷＡＳＨＥＲ');
+    const hit = page.locator('#search-results .search-hit');
+    await expect(hit).toHaveCount(1);
+    await expect(hit.locator('.search-hit-name')).toHaveText('your coffee warm. Dishwasher safe.');
+    await expect(hit.locator('mark')).toHaveText('Dishwasher');
+    await expect(hit.locator('.search-hit-artboard')).toHaveText('Product detail');
+    await expect(page.locator('#search-status')).toHaveText('1 result');
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#artboard-title')).toHaveText('Product detail 430 × 932');
+    await expect(page.locator('.insp-title')).toHaveText('your coffee warm. Dishwasher safe.');
+    await expect(page.locator('#layers .layer-row.selected')).toHaveText(/your coffee warm/);
+    await expect(layoutValue(page, 'X')).toHaveText('16');
+    await expect(page.locator('#overlay .ov-selected')).toHaveCount(1);
+
+    // From the board, choosing a hit goes back to the single view.
+    await page.locator('#mode-board').click();
+    await page.locator('#search').fill('checkout');
+    await expect(page.locator('#search-results .search-hit')).toHaveCount(2);
+    await page.locator('#search-results .search-hit[data-artboard="artboard-demo-2"]').click();
+    await expect(page.locator('#app')).not.toHaveClass(/board-mode/);
+    await expect(page.locator('#artboard-title')).toHaveText('Cart 430 × 932');
+    await expect(page.locator('.insp-title')).toHaveText('Checkout');
+    await expect(page.locator('.crumbs')).toContainText('Primary button');
+
+    await page.locator('#search').press('Escape');
+    await expect(page.locator('#search')).toHaveValue('');
+    await expect(page.locator('#search-results')).toBeHidden();
+    expect(problems).toEqual([]);
+  });
+
   test('export: the embedded image as stored, a standalone SVG, and PNGs with shadows at the chosen scale', async ({ page }) => {
     const problems = watchProblems(page);
     await page.goto(site.url);
@@ -390,6 +428,20 @@ test.describe('synthetic demo', () => {
   });
 });
 
+/** A Japanese phrase from a text layer outside the first artboard, rare enough that its hits are not capped. */
+function japanesePhrase(site: PreviewSite): { artboard: string; query: string } | null {
+  const all = site.textsByArtboard.flat();
+  for (let i = 1; i < site.artboardIds.length; i++) {
+    for (const text of site.textsByArtboard[i] ?? []) {
+      const query = /[\u3040-\u30ff\u3400-\u9fff]{3,8}/.exec(text)?.[0];
+      if (query && all.filter((other) => other.includes(query)).length <= 50) {
+        return { artboard: site.artboardIds[i] ?? '', query };
+      }
+    }
+  }
+  return null;
+}
+
 const extraFiles = (process.env['E2E_FILES'] ?? '').split(path.delimiter).filter(Boolean);
 
 for (const file of extraFiles) {
@@ -429,6 +481,29 @@ for (const file of extraFiles) {
       if (pages > 1) {
         await expect(page.locator('#board-page')).toBeVisible();
       }
+      expect(problems).toEqual([]);
+    });
+
+    test('search finds Japanese text in another artboard and selects that layer', async ({ page }) => {
+      test.setTimeout(120_000);
+      const phrase = japanesePhrase(site);
+      test.skip(!phrase, 'no Japanese text outside the first artboard');
+      const { artboard, query } = phrase ?? { artboard: '', query: '' };
+      const problems = watchProblems(page);
+      await page.goto(site.url);
+      await expect(page.locator('#canvas svg.dv-artboard')).toHaveCount(1, { timeout: 30_000 });
+
+      await page.keyboard.press('ControlOrMeta+f');
+      await expect(page.locator('#search')).toBeFocused();
+      await page.keyboard.insertText(query);
+      const hit = page.locator(`#search-results .search-hit[data-artboard="${artboard}"]`).first();
+      await expect(hit).toBeVisible({ timeout: 30_000 });
+      await expect(hit.locator('mark').first()).toBeAttached();
+      const key = await hit.getAttribute('data-key');
+      await hit.click();
+      await expect(page.locator(`#artboards .artboard-item.active[data-id="${artboard}"]`)).toHaveCount(1, { timeout: 30_000 });
+      await expect(page.locator(`#layers .layer-row.selected[data-key="${key}"]`)).toHaveCount(1);
+      await expect(page.locator('.insp-kind')).not.toHaveText('Artboard');
       expect(problems).toEqual([]);
     });
 

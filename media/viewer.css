@@ -91,7 +91,8 @@ button {
   letter-spacing: 0.04em;
 }
 
-#artboard-filter {
+#artboard-filter,
+#search {
   margin: 0 8px 6px;
   padding: 4px 6px;
   color: inherit;
@@ -101,7 +102,8 @@ button {
   outline: none;
 }
 
-#artboard-filter:focus {
+#artboard-filter:focus,
+#search:focus {
   border-color: var(--dv-focus);
 }
 
@@ -138,6 +140,74 @@ button {
 .artboard-name {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+#search-status {
+  padding: 0 12px 6px;
+  font-size: 11px;
+}
+
+#search-results {
+  margin: 0;
+  padding: 0 0 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+#search-results.pending {
+  opacity: 0.6;
+}
+
+.search-hit {
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.search-hit:hover {
+  background: var(--dv-hover);
+}
+
+#search-pane:focus-within .search-hit.active {
+  outline: 1px solid var(--dv-focus);
+  outline-offset: -1px;
+}
+
+.search-hit.opened {
+  color: var(--dv-active-fg);
+  background: var(--dv-active);
+}
+
+.search-hit-name,
+.search-hit-text,
+.search-hit-artboard {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-hit-text {
+  font-size: 12px;
+}
+
+.search-hit-artboard,
+.search-more {
+  color: var(--dv-dim);
+  font-size: 11px;
+}
+
+.search-hit.opened .search-hit-artboard {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.search-hit mark {
+  color: inherit;
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  border-radius: 2px;
+}
+
+.search-more {
+  padding: 3px 12px;
 }
 
 #layers {

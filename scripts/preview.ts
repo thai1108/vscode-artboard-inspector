@@ -4,11 +4,14 @@
 //
 // Host messages are built with the extension's own payload code and stored exactly as VS Code's serializer would
 // send them (JSON + transferred buffers); the mock host revives them with the same deserializer, so payload bugs
-// that only show up inside VS Code (e.g. Node Buffers) show up here too.
+// that only show up inside VS Code (e.g. Node Buffers) show up here too. Searches are answered in the page by the
+// extension's own payload code, bundled for the browser, over the search index built here.
+import { buildSync } from 'esbuild';
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { openDesignDocument } from '../src/openDocument.ts';
 import { artboardMessage } from '../src/payload.ts';
+import { buildSearchIndex } from '../src/search.ts';
 import { deserializeInWebview, serializeForWebview } from '../test/support/vscodeWebviewSerializer.ts';
 
 const [file, outDir] = process.argv.slice(2);
@@ -32,6 +35,17 @@ writeFileSync(
   path.join(outDir, 'data', 'document.json'),
   JSON.stringify({ fileName: path.basename(file), artboards: doc.artboards, board: doc.board, bufferCounts }),
 );
+writeFileSync(path.join(outDir, 'data', 'search.json'), JSON.stringify(await buildSearchIndex(doc)));
+buildSync({
+  entryPoints: [path.join(root, 'src', 'payload.ts')],
+  outfile: path.join(outDir, 'payload.js'),
+  bundle: true,
+  format: 'iife',
+  globalName: 'previewPayload',
+  platform: 'browser',
+  target: 'chrome120',
+  logLevel: 'warning',
+});
 copyFileSync(path.join(root, 'dist', 'webview.js'), path.join(outDir, 'webview.js'));
 copyFileSync(path.join(root, 'media', 'viewer.css'), path.join(outDir, 'viewer.css'));
 
@@ -39,6 +53,7 @@ const mock = `
 ${serializeForWebview.toString()}
 ${deserializeInWebview.toString()}
 const documentInfo = fetch('data/document.json').then((response) => response.json());
+let searchIndex;
 const post = (data) => {
   const revived = deserializeInWebview(serializeForWebview(data));
   window.dispatchEvent(new MessageEvent('message', { data: revived }));
@@ -83,6 +98,9 @@ window.acquireVsCodeApi = () => ({
         }
       }
       post(reply);
+    } else if (message.type === 'search') {
+      searchIndex ??= fetch('data/search.json').then((response) => response.json());
+      post(previewPayload.searchMessage(await searchIndex, message.query, message.seq));
     } else if (message.type === 'copy') {
       console.log('[copy]', message.label, message.text);
     } else if (message.type === 'save') {
@@ -124,6 +142,7 @@ writeFileSync(
 </head>
 <body>
 <div id="app"></div>
+<script src="payload.js"></script>
 <script src="mock.js"></script>
 <script src="webview.js"></script>
 </body>

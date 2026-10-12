@@ -1,6 +1,7 @@
 import type { DesignDocument } from './document.ts';
-import type { HostMessage, ImagePayload } from './protocol.ts';
+import { MESSAGE_LIMITS, type HostMessage, type ImagePayload } from './protocol.ts';
 import type { ArtboardScene } from './scene/scene.ts';
+import { search, type SearchIndex } from './search.ts';
 
 /** The answer to loadArtboard. */
 export function artboardMessage(design: DesignDocument, id: string, knownImages: Set<string>): HostMessage {
@@ -24,6 +25,11 @@ export function scenesMessage(design: DesignDocument, ids: string[], knownImages
     }
   }
   return { type: 'scenes', scenes, images: collectImages(design, scenes, knownImages), failed };
+}
+
+/** The answer to search. */
+export function searchMessage(index: SearchIndex, query: string, seq: number): HostMessage {
+  return { type: 'searchResults', seq, ...search(index, query, MESSAGE_LIMITS.searchResults) };
 }
 
 /**
