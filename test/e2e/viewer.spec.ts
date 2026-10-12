@@ -1,9 +1,12 @@
 // End-to-end checks of the real webview bundle in Chrome, through the browser preview whose mock host replays
 // VS Code's message serializer. Runs on the synthetic demo; set E2E_FILES (paths joined by the OS path
-// delimiter) to run the generic checks on your own .xd/.fig files too.
+// delimiter) to run the generic checks on your own .xd/.fig files too, and E2E_EXPORT_DIR to keep what they export.
 import { expect, test, type Page } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { imageSize } from '../../src/image.ts';
 import { bandedPng } from '../support/png.ts';
+import { decodePng, exportButton, exportWith, expectStandaloneSvg, findExportLayers, openSvg, originalImage, selectLayerByKey, type SavedFile } from './exportChecks.ts';
 import { buildSampleXd, servePreview, type PreviewSite } from './preview-server.ts';
 
 /** Console errors, CSP violations and uncaught exceptions seen by the page. */
@@ -331,6 +334,60 @@ test.describe('synthetic demo', () => {
     await expect(page.locator('#app')).not.toHaveClass(/board-mode/);
     expect(problems).toEqual([]);
   });
+
+  test('export: the embedded image as stored, a standalone SVG, and PNGs with shadows at the chosen scale', async ({ page }) => {
+    const problems = watchProblems(page);
+    await page.goto(site.url);
+    await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
+
+    await page.locator('#layers .layer-row', { hasText: 'Hero image' }).click();
+    await expect(page.locator('.insp-title')).toHaveText('Hero image');
+    await expect(exportButton(page, 'image')).toHaveText('Save image (PNG)');
+    const image = await exportWith(page, exportButton(page, 'image'));
+    expect(image.fileName).toBe('Hero image.png');
+    expect(image.data.equals(originalImage(site, 0, 'demohero')), 'the original bytes').toBe(true);
+
+    const svg = await exportWith(page, exportButton(page, 'svg'));
+    expect(svg.fileName).toBe('Hero image.svg');
+    const report = await openSvg(page, svg);
+    expectStandaloneSvg(svg, report);
+    expect(svg.data.toString('utf8')).toContain('href="data:image/png;base64,');
+    expect([report.width, report.height, report.drawn.width, report.drawn.height]).toEqual([398, 200, 398, 200]);
+
+    const png = await exportWith(page, exportButton(page, 'png', 2));
+    expect(png.fileName).toBe('Hero image@2x.png');
+    expect(imageSize(png.data)).toEqual({ width: 796, height: 400 });
+    const centre = await decodePng(page, png);
+    expect(centre.pixel[3], 'opaque: the image inside the SVG was drawn').toBe(255);
+    expect(centre.pixel.slice(0, 3), 'not the missing-image grey').not.toEqual([217, 217, 217]);
+
+    await page.locator('#layers .layer-row', { hasText: 'Weekend Sale' }).click();
+    const text = await openSvg(page, await exportWith(page, exportButton(page, 'svg')));
+    expect(text.texts).toEqual([{ fontFamily: expect.stringContaining("'Helvetica Neue'"), fontSize: '28', content: 'Weekend Sale' }]);
+
+    // 191 × 236 with a drop shadow of y 2, blur 8 on every side.
+    await page.locator('#layers .layer-row', { hasText: 'Card / Ceramic Mug' }).locator('[data-toggle]').click();
+    await layerRowIn(page, 'Card / Ceramic Mug', 'Card background').click();
+    const card = await exportWith(page, exportButton(page, 'png', 1));
+    expect(card.fileName).toBe('Card background.png');
+    expect(imageSize(card.data)).toEqual({ width: 207, height: 252 });
+    expect((await decodePng(page, card)).pixel).toEqual([255, 255, 255, 255]);
+    expect((await decodePng(page, card, { x: 0, y: 0 })).pixel[3], 'outside the shadow stays transparent').toBe(0);
+    expect(problems).toEqual([]);
+  });
+
+  test('export from the board view, measured on the board', async ({ page }) => {
+    const problems = watchProblems(page);
+    await page.goto(site.url);
+    await page.locator('#mode-board').click();
+    await page.locator('#board-titles .dv-board-title', { hasText: 'Home' }).click();
+    await page.locator('#layers .layer-row', { hasText: 'Card / Ceramic Mug' }).locator('[data-toggle]').click();
+    await layerRowIn(page, 'Card / Ceramic Mug', 'Card background').click();
+    const card = await exportWith(page, exportButton(page, 'png', 3));
+    expect(card.fileName).toBe('Card background@3x.png');
+    expect(imageSize(card.data)).toEqual({ width: 621, height: 756 });
+    expect(problems).toEqual([]);
+  });
 });
 
 const extraFiles = (process.env['E2E_FILES'] ?? '').split(path.delimiter).filter(Boolean);
@@ -371,6 +428,43 @@ for (const file of extraFiles) {
       const pages = await page.locator('#board-page option').count();
       if (pages > 1) {
         await expect(page.locator('#board-page')).toBeVisible();
+      }
+      expect(problems).toEqual([]);
+    });
+
+    test('exports an image layer and a vector layer', async ({ page }) => {
+      test.setTimeout(240_000);
+      const problems = watchProblems(page);
+      const exportDir = process.env['E2E_EXPORT_DIR'];
+      // The step keeps the saved original apart from the PNG export of the same layer, which has the same name.
+      const keep = (step: string, saved: SavedFile) => {
+        if (exportDir) {
+          writeFileSync(path.join(exportDir, `${path.basename(file)} - ${step} - ${saved.fileName}`), saved.data);
+        }
+      };
+      await page.goto(site.url);
+      await expect(page.locator('#canvas svg.dv-artboard')).toHaveCount(1, { timeout: 30_000 });
+      const { image, vector } = findExportLayers(site);
+      expect(image, 'a layer filled with an embedded image').toBeTruthy();
+
+      for (const [kind, layer] of [['image', image], ['vector', vector]] as const) {
+        if (!layer) {
+          continue;
+        }
+        await selectLayerByKey(page, layer);
+        if (layer.uid) {
+          const saved = await exportWith(page, exportButton(page, 'image'));
+          expect(saved.data.equals(originalImage(site, layer.artboardIndex, layer.uid)), 'the original bytes').toBe(true);
+          keep(`${kind} original`, saved);
+        }
+        const svg = await exportWith(page, exportButton(page, 'svg'));
+        const report = await openSvg(page, svg);
+        expectStandaloneSvg(svg, report);
+        keep(`${kind} svg`, svg);
+        const scale = kind === 'image' ? 1 : 2;
+        const png = await exportWith(page, exportButton(page, 'png', scale));
+        expect(imageSize(png.data)).toEqual({ width: Math.max(1, Math.round(report.width * scale)), height: Math.max(1, Math.round(report.height * scale)) });
+        keep(`${kind} png`, png);
       }
       expect(problems).toEqual([]);
     });

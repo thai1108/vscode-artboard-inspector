@@ -1,4 +1,5 @@
 import { cssForNode, borderRadius, shadowValue } from '../render/css.ts';
+import { EXPORT_SCALES, imageFillOf } from '../render/export.ts';
 import { fmt, type Box } from '../render/geometry.ts';
 import { roundAlpha, toCssColor, toHex } from '../scene/color.ts';
 import type { ArtboardScene, Paint, Rgba, SceneNode, Stroke, TextNode, TextStyle } from '../scene/scene.ts';
@@ -15,6 +16,8 @@ export interface InspectorContext {
   /** Ancestors of the node, outermost first. */
   ancestors: SceneNode[];
   layerCount: number;
+  /** File extension of an embedded image the webview holds; "Save image" is offered only for those. */
+  imageFormat?: (uid: string) => string | undefined;
 }
 
 export function renderInspector(ctx: InspectorContext): string {
@@ -99,7 +102,29 @@ function nodeInspector(ctx: InspectorContext, node: SceneNode): string {
   if (ctx.box) {
     parts.push(cssSection(node, ctx.box), tailwindSection(node, ctx.box));
   }
+  parts.push(exportSection(node, ctx));
   return parts.join('');
+}
+
+/** Drawing exports need the layer's measured box; saving an embedded image only needs its bytes. */
+function exportSection(node: SceneNode, ctx: InspectorContext): string {
+  const fill = imageFillOf(node);
+  const format = fill ? ctx.imageFormat?.(fill.uid) : undefined;
+  const actions: string[] = [];
+  if (format) {
+    actions.push(`<button class="action" data-export="image" title="The image exactly as stored in the design file">Save image (${escapeHtml(format.toUpperCase())})</button>`);
+  }
+  if (ctx.box) {
+    actions.push('<button class="action secondary" data-export="svg" title="Standalone SVG with images embedded and text kept as text">Export SVG</button>');
+  }
+  const rows = actions.length ? [`<div class="export-row">${actions.join('')}</div>`] : [];
+  if (ctx.box) {
+    const scales = EXPORT_SCALES.map(
+      (scale) => `<button class="action secondary" data-export="png" data-scale="${scale}" title="Export PNG at ${scale}x">${scale}x</button>`,
+    );
+    rows.push(`<div class="export-row"><span class="export-label">Export PNG</span>${scales.join('')}</div>`);
+  }
+  return rows.length ? section('Export', rows.join('')) : '';
 }
 
 function textSections(node: TextNode): string {
