@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0
+
+- Screenshot overlay (toolbar "Overlay", paste, or Shift+drop): a PNG/JPEG/WebP capture drawn over the artboard at
+  1x/2x/3x, with opacity, difference blend, show/hide and arrow-key nudging, to compare an implementation with the
+  design. Kept in memory per artboard.
+- Export from the inspector: save an embedded image exactly as stored, or export a layer as a standalone SVG or as
+  PNG at 1x/2x/3x. VS Code asks where to save; file names and bytes are checked before anything is written.
+- Tailwind CSS v4 classes next to the CSS, written from the same values: theme utilities when they match exactly,
+  arbitrary values otherwise.
+- Search (`Cmd/Ctrl+F`) across the text and layer names of every artboard, ignoring case and character width
+  (Japanese included); choosing a result opens its artboard and selects the layer.
+- Fix: inside VS Code the viewer was inset 20 px left and right by VS Code's default webview padding.
+- Releases: pushing a `v*` tag builds the `.vsix` and creates the GitHub Release with it.
+
 ## 0.2.0
 
 - Open Figma local copies (`.fig`) offline: pages' frames (and frames in sections) as artboards, frames with clipping,

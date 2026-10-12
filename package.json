@@ -2,7 +2,7 @@
   "name": "artboard-inspector",
   "displayName": "Artboard Inspector",
   "description": "View and inspect design files inside VS Code — Adobe XD (.xd) and Figma local copies (.fig): artboards, layers, sizes, spacing, colors, fonts and CSS. Works offline.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "thai1108",
   "icon": "media/icon.png",
   "galleryBanner": {
