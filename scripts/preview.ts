@@ -103,6 +103,12 @@ window.acquireVsCodeApi = () => ({
       post(previewPayload.searchMessage(await searchIndex, message.query, message.seq));
     } else if (message.type === 'copy') {
       console.log('[copy]', message.label, message.text);
+    } else if (message.type === 'save') {
+      // What the extension host would receive (structured clone out of the webview, then VS Code's serializer);
+      // collected for the browser tests instead of opening a save dialog.
+      const received = deserializeInWebview(serializeForWebview(structuredClone(message)));
+      (window.previewSaves ??= []).push(received);
+      console.log('[save]', received.fileName, received.data?.byteLength);
     } else if (message.type === 'pickScreenshot') {
       // Stands in for the host's open dialog; the bytes are checked by the webview, as for a paste.
       const input = document.createElement('input');

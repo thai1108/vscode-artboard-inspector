@@ -1,3 +1,4 @@
+import { sniffImageMime } from './image.ts';
 import type { BoardLayout } from './scene/board.ts';
 import type { ArtboardScene, ArtboardSummary } from './scene/scene.ts';
 import type { SearchHit } from './search.ts';
@@ -27,7 +28,11 @@ export type WebviewMessage =
   | { type: 'loadArtboards'; ids: string[]; knownImages: string[] }
   | { type: 'copy'; text: string; label: string }
   | { type: 'search'; query: string; seq: number }
-  | { type: 'pickScreenshot'; artboardId: string };
+  | { type: 'pickScreenshot'; artboardId: string }
+  /** An exported layer or embedded image; the host asks the user where to save it. */
+  | { type: 'save'; fileName: string; data: Uint8Array };
+
+export type SaveRequest = Extract<WebviewMessage, { type: 'save' }>;
 
 export const MESSAGE_LIMITS = {
   idLength: 512,
@@ -39,7 +44,27 @@ export const MESSAGE_LIMITS = {
   searchQueryLength: 200,
   /** Hits per searchResults answer. */
   searchResults: 200,
+  saveBytes: 64 * 1024 * 1024,
+  /** In UTF-8 bytes; most file systems allow 255 per name. */
+  fileNameBytes: 240,
 };
+
+/** File types the host writes, with the content type the bytes must sniff as. */
+export const EXPORT_TYPES = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+} as const;
+
+export type ExportExtension = keyof typeof EXPORT_TYPES;
+
+/** Path separators, characters Windows reserves, control and bidi characters, unpaired surrogates. */
+const UNSAFE_FILE_NAME_CHARACTERS = /[\\/:*?"<>|\p{Cc}\p{Cs}\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
+/** Device names Windows reserves, also when followed by an extension ("NUL.txt.png"). */
+export const WINDOWS_RESERVED_NAME = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\.|$)/i;
 
 /** Validates a message from the webview at runtime; anything malformed or oversized is dropped. */
 export function parseWebviewMessage(raw: unknown): WebviewMessage | null {
@@ -86,9 +111,38 @@ export function parseWebviewMessage(raw: unknown): WebviewMessage | null {
       }
       return { type: 'pickScreenshot', artboardId };
     }
+    case 'save': {
+      const { fileName, data } = message;
+      if (!isSafeFileName(fileName) || !(data instanceof Uint8Array) || !data.byteLength || data.byteLength > MESSAGE_LIMITS.saveBytes) {
+        return null;
+      }
+      // The bytes must be what the extension says, so a name like "icon.svg" never carries something else.
+      return sniffImageMime(data) === EXPORT_TYPES[extensionOf(fileName)] ? { type: 'save', fileName, data } : null;
+    }
     default:
       return null;
   }
+}
+
+/**
+ * A bare file name the host may suggest in a save dialog: a known export extension in lower case, no path
+ * separators or traversal, not hidden (leading dot), nothing Windows would strip (trailing dot/space) or treat as a device.
+ */
+export function isSafeFileName(value: unknown): value is string {
+  if (typeof value !== 'string' || utf8Length(value) > MESSAGE_LIMITS.fileNameBytes || UNSAFE_FILE_NAME_CHARACTERS.test(value)) {
+    return false;
+  }
+  const [, base = '', extension = ''] = /^(.+)\.([a-z]+)$/.exec(value) ?? [];
+  return Object.hasOwn(EXPORT_TYPES, extension) && !base.startsWith('.') && !/[. ]$/.test(base) && !WINDOWS_RESERVED_NAME.test(value);
+}
+
+/** The extension of a name that passed isSafeFileName. */
+export function extensionOf(fileName: string): ExportExtension {
+  return fileName.slice(fileName.lastIndexOf('.') + 1) as ExportExtension;
+}
+
+export function utf8Length(value: string): number {
+  return new TextEncoder().encode(value).length;
 }
 
 function isStringList(value: unknown, maxItems: number): value is string[] {

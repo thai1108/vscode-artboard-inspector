@@ -25,6 +25,8 @@
 html,
 body {
   margin: 0;
+  /* VS Code's default webview styles pad the body by 20px left and right. */
+  padding: 0;
   height: 100%;
   overflow: hidden;
   background: var(--dv-bg);
@@ -626,6 +628,31 @@ button {
 
 .action:hover {
   background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+.action.secondary {
+  color: var(--vscode-button-secondaryForeground, #ffffff);
+  background: var(--vscode-button-secondaryBackground, #3a3d41);
+}
+
+.action.secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground, #45494e);
+}
+
+.export-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.export-row + .export-row {
+  margin-top: 8px;
+}
+
+.export-label {
+  margin-right: 2px;
+  color: var(--dv-dim);
 }
 
 .fonts {

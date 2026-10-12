@@ -1,5 +1,5 @@
 import { toHex } from '../scene/color.ts';
-import { isIdentity } from '../scene/matrix.ts';
+import { IDENTITY, isIdentity, multiply } from '../scene/matrix.ts';
 import type {
   ArtboardScene,
   FrameStyle,
@@ -16,6 +16,7 @@ import type {
   TextStyle,
   TextTransform,
 } from '../scene/scene.ts';
+import type { Box } from './geometry.ts';
 
 export type ImageUrlResolver = (uid: string) => string | undefined;
 
@@ -48,18 +49,45 @@ export function renderArtboardSvg(scene: ArtboardScene, imageUrl: ImageUrlResolv
   );
 }
 
+export interface LayerSvgOptions {
+  idPrefix: string;
+  /** Output width/height, e.g. to rasterize at a scale; the viewBox stays `box`. Defaults to the box size. */
+  size?: { width: number; height: number };
+}
+
+/**
+ * Renders one layer as an SVG document of its own, cropped to `box` (artboard pixels), without the viewer's
+ * data-key/class hooks. The ancestors (outermost first) only place it: their opacity, masks and shadows are left out.
+ */
+export function renderLayerSvg(node: SceneNode, ancestors: readonly SceneNode[], box: Box, imageUrl: ImageUrlResolver, options: LayerSvgOptions): string {
+  const writer = new SvgWriter(imageUrl, idPart(options.idPrefix), true);
+  const layer = writer.node(node);
+  const placement = ancestors.reduce((m, ancestor) => multiply(m, ancestor.transform), IDENTITY);
+  const body = isIdentity(placement) ? layer : `<g transform="${matrix(placement)}">${layer}</g>`;
+  const defs = writer.defs.length ? `<defs>${writer.defs.join('')}</defs>` : '';
+  const { width, height } = options.size ?? box;
+  // xml:space keeps runs of spaces, which the viewer gets from `white-space: pre` in viewer.css.
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" xml:space="preserve" width="${num(width)}" height="${num(height)}" ` +
+    `viewBox="${[box.x, box.y, box.width, box.height].map(num).join(' ')}">${defs}${body}</svg>`
+  );
+}
+
 class SvgWriter {
   readonly defs: string[] = [];
   private readonly imageUrl: ImageUrlResolver;
   private readonly idPrefix: string;
+  /** Leaves out the viewer's hooks (data-key, classes, pointer-events) for SVG written to a file. */
+  private readonly standalone: boolean;
 
-  constructor(imageUrl: ImageUrlResolver, idPrefix: string) {
+  constructor(imageUrl: ImageUrlResolver, idPrefix: string, standalone = false) {
     this.imageUrl = imageUrl;
     this.idPrefix = idPrefix;
+    this.standalone = standalone;
   }
 
   node(node: SceneNode): string {
-    const attrs = [`data-key="${escapeAttr(node.key)}"`];
+    const attrs = this.standalone ? [] : [`data-key="${escapeAttr(node.key)}"`];
     if (!isIdentity(node.transform)) {
       attrs.push(`transform="${matrix(node.transform)}"`);
     }
@@ -70,7 +98,7 @@ class SvgWriter {
     if (node.shadows.length && !isLine) {
       attrs.push(`filter="url(#${this.shadowFilter(node.key, node.shadows)})"`);
     }
-    return `<g ${attrs.join(' ')}>${this.body(node)}</g>`;
+    return attrs.length ? `<g ${attrs.join(' ')}>${this.body(node)}</g>` : this.body(node);
   }
 
   private body(node: SceneNode): string {
@@ -78,7 +106,7 @@ class SvgWriter {
       case 'shape':
         return this.shape(node);
       case 'text':
-        return text(node);
+        return text(node, this.standalone);
       case 'group':
         return this.group(node);
     }
@@ -102,7 +130,8 @@ class SvgWriter {
         auxiliary = geometryElement(grow(geometry, offset), `fill="none" ${strokeAttrs(stroke, stroke.width)}`);
       }
     }
-    return geometryElement(geometry, `class="${className}" ${primary.join(' ')}`) + auxiliary;
+    const attrs = this.standalone ? primary : [`class="${className}"`, ...primary];
+    return geometryElement(geometry, attrs.join(' ')) + auxiliary;
   }
 
   /** SVG only strokes centered, so inside/outside path strokes are drawn twice as wide and clipped/masked. */
@@ -212,7 +241,7 @@ class SvgWriter {
   }
 }
 
-function text(node: TextNode): string {
+function text(node: TextNode, standalone: boolean): string {
   return node.lines
     .map((line) => {
       const runs = line.runs
@@ -221,13 +250,14 @@ function text(node: TextNode): string {
           const position = run.xs ? `x="${run.xs.map(num).join(' ')}"` : run.x === undefined ? '' : `x="${num(run.x)}"`;
           const attrs = [position, style ? textStyleAttrs(style, run.glyphFont) : ''];
           if (run.glyphFont && PROPORTIONAL_UI_FONT.test(run.glyphFont)) {
-            attrs.push('class="dv-palt"');
+            // A file has no viewer.css; it is only ever loaded as an image, which the webview CSP does not reach.
+            attrs.push(standalone ? `style="font-feature-settings: 'palt'"` : 'class="dv-palt"');
           }
           return `<tspan ${attrs.filter(Boolean).join(' ')}>${escapeText(applyTextTransform(run.text, style?.textTransform ?? 'none'))}</tspan>`;
         })
         .join('');
       // white-space: pre comes from viewer.css; the webview CSP blocks inline style attributes.
-      return `<text x="${num(line.x)}" y="${num(line.y)}" pointer-events="bounding-box">${runs}</text>`;
+      return `<text x="${num(line.x)}" y="${num(line.y)}"${standalone ? '' : ' pointer-events="bounding-box"'}>${runs}</text>`;
     })
     .join('');
 }

@@ -1,5 +1,6 @@
 import type { HostMessage, ImagePayload } from '../protocol.ts';
 import type { BoardLayout } from '../scene/board.ts';
+import { extensionForType } from '../render/export.ts';
 import { measureBetween, type Guide } from '../render/measure.ts';
 import { renderArtboardSvg } from '../render/svg.ts';
 import { fmt, type Box } from '../render/geometry.ts';
@@ -9,6 +10,7 @@ import { BoardView } from './board.ts';
 import { indexScene, measureLayers, type IndexedNode } from './bounds.ts';
 import { escapeHtml } from '../render/html.ts';
 import { byId } from './dom.ts';
+import { exportLayer, type ExportFormat, type ExportTarget } from './exporter.ts';
 import { renderInspector } from './inspector.ts';
 import { renderLayerTree } from './layers.ts';
 import { drawOverlay } from './overlay.ts';
@@ -103,6 +105,8 @@ let hovered: string | null = null;
 /** Layer to select once its artboard is shown (a search hit in another artboard). */
 let pendingLayer: { artboard: string; key: string } | null = null;
 const imageUrls = new Map<string, string>();
+/** The blobs behind imageUrls, kept for exports (the CSP blocks fetching blob: URLs). */
+const imageBlobs = new Map<string, Blob>();
 /** Images whose bytes did not arrive as a Uint8Array; shown as a layer warning instead of a silent broken image. */
 const undecodableImages = new Set<string>();
 const state = vscode.getState() ?? {};
@@ -126,6 +130,7 @@ const board = new BoardView({
   layers: ui.layers,
   viewport,
   imageUrl: (uid) => imageUrls.get(uid),
+  imageFormat,
   requestScenes: (ids) => vscode.postMessage({ type: 'loadArtboards', ids, knownImages: [...imageUrls.keys()] }),
   onSelectionChange: () => renderArtboardList(),
 });
@@ -219,8 +224,14 @@ function addImages(images: ImagePayload[]): void {
       undecodableImages.add(image.uid);
       continue;
     }
-    imageUrls.set(image.uid, URL.createObjectURL(new Blob([image.data as Uint8Array<ArrayBuffer>], { type: image.mime })));
+    const blob = new Blob([image.data as Uint8Array<ArrayBuffer>], { type: image.mime });
+    imageBlobs.set(image.uid, blob);
+    imageUrls.set(image.uid, URL.createObjectURL(blob));
   }
+}
+
+function imageFormat(uid: string): string | undefined {
+  return extensionForType(imageBlobs.get(uid)?.type ?? '') ?? undefined;
 }
 
 function noteUndecodableImages(scenes: ArtboardScene[]): void {
@@ -413,6 +424,7 @@ function refreshSelection(): void {
     box: node ? boxOf(node.key) : null,
     ancestors: node ? ancestorsOf(node.key) : [],
     layerCount: index.size,
+    imageFormat,
   });
   for (const row of ui.layers.querySelectorAll('.layer-row.selected')) {
     row.classList.remove('selected');
@@ -555,6 +567,11 @@ ui.inspector.addEventListener('click', (event) => {
     }
     return;
   }
+  const exportButton = target.closest<HTMLElement>('[data-export]');
+  if (exportButton) {
+    void runExport(exportButton.dataset['export'] as ExportFormat, Number(exportButton.dataset['scale'] ?? 1));
+    return;
+  }
   const copy = target.closest<HTMLElement>('[data-copy]');
   if (copy?.dataset['copy'] !== undefined) {
     vscode.postMessage({ type: 'copy', text: copy.dataset['copy'], label: copy.dataset['label'] ?? 'value' });
@@ -641,6 +658,31 @@ window.addEventListener('keydown', (event) => {
 function showMessage(text: string): void {
   ui.message.textContent = text;
   ui.message.hidden = false;
+}
+
+function exportTarget(): ExportTarget | null {
+  if (mode === 'board') {
+    return board.selectedLayer();
+  }
+  return scene && selected ? { scene, key: selected, boxes } : null;
+}
+
+let exporting = false;
+/** Builds the file and hands it to the host, which asks where to save it. One export at a time. */
+async function runExport(format: ExportFormat, scale: number): Promise<void> {
+  const target = exportTarget();
+  if (!target || exporting) {
+    return;
+  }
+  exporting = true;
+  try {
+    const { fileName, data } = await exportLayer(target, format, scale, imageBlobs);
+    vscode.postMessage({ type: 'save', fileName, data });
+  } catch (error) {
+    showToast(`Export failed: ${(error as Error).message}`, 4000);
+  } finally {
+    exporting = false;
+  }
 }
 
 let toastTimer: number | undefined;

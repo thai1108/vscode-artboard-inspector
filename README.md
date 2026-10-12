@@ -9,6 +9,7 @@ Open Adobe XD (`.xd`) files and Figma local copies (`.fig`) in VS Code and inspe
 - With a layer selected, hover another one (or the artboard background) to see the spacing redlines
 - Board view: every artboard at its position in the file, inspect and measure across artboards
 - Search the text and layer names of every artboard, Japanese included
+- Save embedded images as they are stored, export any layer as SVG or as PNG at 1x/2x/3x
 - Overlay a screenshot of the implementation on an artboard to compare the two
 - Reloads automatically when the file changes on disk
 - Fully offline: the file is unzipped and rendered locally, nothing is uploaded
@@ -46,6 +47,19 @@ artboard, selects the layer in the canvas, the layer tree and the inspector. The
 | `↓` / `↑` | Move through the results |
 | `Enter` | Open the result; again for the next one (`Shift+Enter`: the previous one) |
 | `Esc` | Clear the search; again to leave the box |
+
+## Export
+
+Select a layer (in either view) and use **Export** at the bottom of the inspector:
+
+- **Save image** — shown for layers filled with an embedded image: the image exactly as stored in the design file
+  (PNG, JPEG, GIF, WebP or SVG).
+- **Export SVG** — the layer on its own, cropped to what it paints including strokes and shadows. Images are embedded
+  as data URIs and text stays text, so the fonts must be installed wherever the SVG is opened.
+- **Export PNG 1x / 2x / 3x** — the same drawing rendered at that scale (`name@2x.png`), up to 16384 px per side.
+
+VS Code asks where to save, starting in the design file's folder with the layer name. A layer is exported without
+its parents' opacity, masks and shadows.
 
 ## Compare with a screenshot
 
@@ -127,11 +141,13 @@ pnpm sample <out.xd>                  # write an original demo design (used for 
 ```
 
 - `pnpm test:e2e` checks the synthetic demo (selection, inspector values, redlines, zoom, board view, images
-  actually decoded, no console/CSP errors). To run the generic checks on your own files as well, list them in
-  `E2E_FILES`, separated by `:` — e.g. `E2E_FILES="$HOME/a.xd:$HOME/b.fig" pnpm test:e2e`. It needs Google Chrome;
-  no Playwright browser download is required.
+  actually decoded, exports, no console/CSP errors). To run the generic checks on your own files as well, list them in
+  `E2E_FILES`, separated by `:` — e.g. `E2E_FILES="$HOME/a.xd:$HOME/b.fig" pnpm test:e2e`; set `E2E_EXPORT_DIR` to a
+  folder outside the repository to keep the files those checks export. It needs Google Chrome; no Playwright browser
+  download is required.
 - `pnpm test:vscode` opens the demo `.xd` and a small synthetic `.fig` in a real VS Code and checks that the
-  Artboard Inspector editors open them by default. Set `VSCODE_EXECUTABLE` to use a specific VS Code build;
+  Artboard Inspector editors open them by default, and that a file posted from a webview is saved next to the design
+  file. Set `VSCODE_EXECUTABLE` to use a specific VS Code build;
   without it and without `/Applications/Visual Studio Code.app`, a copy of VS Code is downloaded.
 - `pnpm preview` writes the design data to `<dir>`, and `E2E_FILES` runs build previews in a temporary folder;
   keep real designs out of the repository.
