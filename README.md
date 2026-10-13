@@ -113,7 +113,7 @@ Requires Node.js 22.18 or later (the tests and scripts run TypeScript directly) 
 corepack enable                    # provides the pnpm version pinned in package.json
 pnpm install
 pnpm package                       # runs all checks, writes artboard-inspector-<version>.vsix
-code --install-extension artboard-inspector-0.3.0.vsix
+code --install-extension artboard-inspector-0.4.0.vsix
 ```
 
 ## Releasing

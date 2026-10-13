@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Compare versions (toolbar "Compare…"): pick the earlier `.xd`/`.fig` of the same design to see which artboards
+  were added, removed or changed, with changed-layer counts and a "Changed only" filter. On the canvas added layers
+  are outlined in green, changed ones in amber and removed ones as dashed ghosts; Before/After (`` ` ``) shows the
+  other version, and the inspector lists each change as before → after. Swap and Exit from the compare bar.
+- Releases are also published to Open VSX (for Cursor, Windsurf, VSCodium), and an existing release can be published
+  there with a manual workflow run.
+
 ## 0.3.0
 
 - Screenshot overlay (toolbar "Overlay", paste, or Shift+drop): a PNG/JPEG/WebP capture drawn over the artboard at
