@@ -121,7 +121,9 @@ code --install-extension artboard-inspector-0.3.0.vsix
 1. Bump `version` in `package.json` and add a matching `## <version>` section to `CHANGELOG.md`; merge to `main`.
 2. Push a tag `v<version>` (e.g. `git tag v0.3.0 && git push origin v0.3.0`). The *Release* workflow checks that the
    tag matches `package.json`, runs `pnpm check` and `pnpm package`, and creates a GitHub Release with the `.vsix`
-   attached and the CHANGELOG section as notes.
+   attached and the CHANGELOG section as notes, then publishes that `.vsix` to Open VSX (secret `OPEN_VSX`, an
+   Open VSX access token). An existing release can be published to Open VSX with the *Publish to Open VSX* workflow
+   (Actions → Run workflow, with its tag).
 3. Download the `.vsix` from the release and upload it to the Marketplace by hand.
 
 ## Shortcuts (canvas focused)
