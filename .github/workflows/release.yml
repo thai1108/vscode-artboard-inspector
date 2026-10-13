@@ -70,3 +70,13 @@ jobs:
           # shellcheck disable=SC2086
           gh release create "$TAG" "artboard-inspector-$VERSION.vsix" \
             --repo "$GITHUB_REPOSITORY" --verify-tag --title "Artboard Inspector $VERSION" $NOTES_ARGS
+
+  open-vsx:
+    needs: release
+    permissions:
+      contents: read
+    uses: ./.github/workflows/open-vsx.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      OPEN_VSX: ${{ secrets.OPEN_VSX }}
