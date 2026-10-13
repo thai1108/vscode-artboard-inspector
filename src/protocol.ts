@@ -1,3 +1,4 @@
+import type { ArtboardDiff, CompareSummary } from './compare/compare.ts';
 import { sniffImageMime } from './image.ts';
 import type { BoardLayout } from './scene/board.ts';
 import type { ArtboardScene, ArtboardSummary } from './scene/scene.ts';
@@ -9,28 +10,40 @@ export interface ImagePayload {
   data: Uint8Array;
 }
 
+/** While comparing: the scene is the earlier version's. Absent for the current version. */
+export type Side = 'before';
+
 /** Extension host → webview. */
 export type HostMessage =
   | { type: 'document'; fileName: string; artboards: ArtboardSummary[]; board: BoardLayout }
-  | { type: 'artboard'; scene: ArtboardScene; images: ImagePayload[] }
+  /** `diff`: while comparing, what changed in the artboard (sent with either version's scene). */
+  | { type: 'artboard'; scene: ArtboardScene; images: ImagePayload[]; side?: Side; diff?: ArtboardDiff }
   /** Answer to loadArtboards (board view); artboards that failed to convert are listed in `failed`. */
   | { type: 'scenes'; scenes: ArtboardScene[]; images: ImagePayload[]; failed: { id: string; message: string }[] }
   /** Answer to search; `seq` is the request's, so the webview can drop answers to queries it has moved past. */
   | { type: 'searchResults'; seq: number; hits: SearchHit[]; total: number; searched: number; error?: string }
   /** Answer to pickScreenshot: an image checked by screenshot.ts, to overlay on `artboardId`. */
   | { type: 'screenshot'; artboardId: string; name: string; data: Uint8Array }
+  /** Compare mode started, was redone or swapped (a summary), or ended (null). */
+  | { type: 'compare'; summary: CompareSummary | null }
   | { type: 'error'; message: string };
 
 /** Webview → extension host. */
 export type WebviewMessage =
   | { type: 'ready' }
-  | { type: 'loadArtboard'; id: string; knownImages: string[] }
+  /** `side`: the earlier version's artboard, while comparing. */
+  | { type: 'loadArtboard'; id: string; knownImages: string[]; side?: Side }
   | { type: 'loadArtboards'; ids: string[]; knownImages: string[] }
   | { type: 'copy'; text: string; label: string }
   | { type: 'search'; query: string; seq: number }
   | { type: 'pickScreenshot'; artboardId: string }
   /** An exported layer or embedded image; the host asks the user where to save it. */
-  | { type: 'save'; fileName: string; data: Uint8Array };
+  | { type: 'save'; fileName: string; data: Uint8Array }
+  /** Asks for another version of the design to compare the open file with (the open file is the later one). */
+  | { type: 'pickCompare' }
+  /** Makes the other file the later version and the open one the earlier. */
+  | { type: 'swapCompare' }
+  | { type: 'exitCompare' };
 
 export type SaveRequest = Extract<WebviewMessage, { type: 'save' }>;
 
@@ -76,12 +89,18 @@ export function parseWebviewMessage(raw: unknown): WebviewMessage | null {
   switch (message['type']) {
     case 'ready':
       return { type: 'ready' };
+    case 'pickCompare':
+      return { type: 'pickCompare' };
+    case 'swapCompare':
+      return { type: 'swapCompare' };
+    case 'exitCompare':
+      return { type: 'exitCompare' };
     case 'loadArtboard': {
-      const { id, knownImages } = message;
-      if (!isString(id, MESSAGE_LIMITS.idLength) || !isStringList(knownImages, MESSAGE_LIMITS.knownImages)) {
+      const { id, knownImages, side } = message;
+      if (!isString(id, MESSAGE_LIMITS.idLength) || !isStringList(knownImages, MESSAGE_LIMITS.knownImages) || (side !== undefined && side !== 'before')) {
         return null;
       }
-      return { type: 'loadArtboard', id, knownImages };
+      return side ? { type: 'loadArtboard', id, knownImages, side } : { type: 'loadArtboard', id, knownImages };
     }
     case 'loadArtboards': {
       const { ids, knownImages } = message;

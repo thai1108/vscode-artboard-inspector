@@ -220,4 +220,6 @@ export interface ArtboardScene extends ArtboardSummary {
   imageUids: string[];
   /** Layers that could not be converted, reported to the user instead of being dropped silently. */
   warnings: string[];
+  /** Ids of the hidden layers left out, so comparing versions can tell a hidden layer from a deleted one. */
+  hidden?: string[];
 }

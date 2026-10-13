@@ -16,3 +16,6 @@ export function fontWeight(style: string): number {
   }
   return WEIGHT_NAMES.find(([pattern]) => pattern.test(style))?.[1] ?? 400;
 }
+
+/** Characters drawn about twice as wide as Latin letters: CJK, kana, hangul, full-width forms, emoji. */
+export const WIDE_CHARACTER = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f000}-\u{3ffff}]/u;

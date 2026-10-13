@@ -35,18 +35,27 @@ function textsOf(nodes: StoredNode[]): string[] {
   return nodes.flatMap((node) => [...(node.kind === 'text' && node.content ? [node.content] : []), ...textsOf(node.children ?? [])]);
 }
 
-/** Writes the synthetic demo design (scripts/sample-xd.ts) and returns its path. */
-export function buildSampleXd(): string {
+/**
+ * Writes the synthetic demo design (scripts/sample-xd.ts), or its earlier version, into a new temporary folder and
+ * returns its path; remove the folder with removeSample.
+ */
+export function buildSampleXd(options: { earlier?: boolean } = {}): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'artboard-inspector-sample-'));
-  const file = path.join(dir, 'sample-store.xd');
-  execFileSync(process.execPath, [path.join(ROOT, 'scripts/sample-xd.ts'), file], { stdio: 'ignore' });
+  const file = path.join(dir, options.earlier ? 'sample-store-v1.xd' : 'sample-store.xd');
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts/sample-xd.ts'), file, ...(options.earlier ? ['--earlier'] : [])], { stdio: 'ignore' });
   return file;
 }
 
-export async function servePreview(designFile: string): Promise<PreviewSite> {
+export function removeSample(file: string): void {
+  rmSync(path.dirname(file), { recursive: true, force: true });
+}
+
+/** Builds and serves the preview of `designFile`; with `compare`, "Compare…" compares it with that earlier file. */
+export async function servePreview(designFile: string, options: { compare?: string } = {}): Promise<PreviewSite> {
   const dir = mkdtempSync(path.join(tmpdir(), 'artboard-inspector-e2e-'));
   execFileSync(process.execPath, [path.join(ROOT, 'esbuild.mjs')], { cwd: ROOT, stdio: 'ignore' });
-  execFileSync(process.execPath, [path.join(ROOT, 'scripts/preview.ts'), designFile, dir], { cwd: ROOT, stdio: 'ignore' });
+  const compare = options.compare ? ['--compare', options.compare] : [];
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts/preview.ts'), designFile, dir, ...compare], { cwd: ROOT, stdio: 'ignore' });
   const info = JSON.parse(readFileSync(path.join(dir, 'data', 'document.json'), 'utf8')) as { artboards: { id: string }[] };
   const scenes = info.artboards.map((_, i) => {
     const stored = readFileSync(path.join(dir, 'data', `${i}.json`), 'utf8');

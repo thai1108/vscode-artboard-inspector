@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { vscodeSaveDeps } from '../../src/designEditorProvider.ts';
+import { CompareSession } from '../../src/compareSession.ts';
+import { readDesign, vscodeCompareDeps, vscodeSaveDeps } from '../../src/designEditorProvider.ts';
 import { readScreenshot } from '../../src/openScreenshot.ts';
-import { parseWebviewMessage } from '../../src/protocol.ts';
+import { parseWebviewMessage, type HostMessage } from '../../src/protocol.ts';
 import { saveExport } from '../../src/saveExport.ts';
+import { buildSearchIndex } from '../../src/search.ts';
 
 // Mocha's TDD globals, provided by @vscode/test-cli inside the extension host.
 declare function suite(name: string, body: () => void): void;
@@ -141,6 +143,50 @@ suite('Artboard Inspector in VS Code', () => {
       assert.equal(message.data.buffer.byteLength, message.data.byteLength);
       assert.ok(Buffer.from(message.data).equals(readFileSync(file)));
     }
+  });
+
+  test('compares an open design with an earlier version picked in the dialog, read through VS Code', async () => {
+    const cases = [
+      { later: 'sample-store.xd', earlier: 'sample-store-v1.xd', artboard: 'artboard-demo-0', row: { label: 'X', before: '231', after: '223' } },
+      { later: 'sample.fig', earlier: 'sample-v1.fig', artboard: '1:10', row: { label: 'Y', before: '580', after: '600' } },
+    ];
+    for (const { later, earlier, artboard, row } of cases) {
+      const laterUri = vscode.Uri.file(workspacePath(later));
+      const opened = await readDesign(laterUri);
+      const posted: HostMessage[] = [];
+      const errors: string[] = [];
+      const session = new CompareSession(
+        () => ({ name: later, design: opened, searchIndex: () => buildSearchIndex(opened) }),
+        { ...vscodeCompareDeps(laterUri), pickFile: async () => vscode.Uri.file(workspacePath(earlier)), showErrorMessage: (message) => errors.push(message) },
+        (message) => posted.push(message),
+      );
+      await session.pick();
+      assert.deepEqual(errors, [], later);
+      const summary = posted.find((message) => message.type === 'compare');
+      assert.ok(summary?.type === 'compare' && summary.summary, later);
+      assert.equal(summary.summary.beforeName, earlier);
+      assert.equal(summary.summary.artboards.find((entry) => entry.afterId === artboard)?.status, 'changed', later);
+      const reply = session.artboard(artboard, new Set());
+      assert.ok(reply.type === 'artboard', later);
+      assert.ok(reply.diff?.changes.some((change) => change.props.some((prop) => prop.label === row.label && prop.before === row.before && prop.after === row.after)), `${later}: ${JSON.stringify(reply.diff?.changes)}`);
+      const previous = session.artboard(summary.summary.artboards.find((entry) => entry.afterId === artboard)?.beforeId ?? '', new Set(), 'before');
+      assert.equal(previous.type === 'artboard' ? previous.side : previous.type, 'before', later);
+    }
+  });
+
+  test('refuses to compare with a design file over the size limit, before reading it', async () => {
+    const laterUri = vscode.Uri.file(workspacePath('sample-store.xd'));
+    const opened = await readDesign(laterUri);
+    const posted: HostMessage[] = [];
+    const errors: string[] = [];
+    const session = new CompareSession(
+      () => ({ name: 'sample-store.xd', design: opened, searchIndex: () => buildSearchIndex(opened) }),
+      { ...vscodeCompareDeps(laterUri), pickFile: async () => vscode.Uri.file(workspacePath('oversized.xd')), showErrorMessage: (message) => errors.push(message) },
+      (message) => posted.push(message),
+    );
+    await session.pick();
+    assert.deepEqual(posted, []);
+    assert.deepEqual(errors, ['Could not open oversized.xd: File is too large to open (300 MB; limit 300 MB)']);
   });
 
   test('refuses screenshots that are not images or are too large', async () => {

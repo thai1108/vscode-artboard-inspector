@@ -40,6 +40,8 @@ export const FIG_SCENE_LIMITS = {
   warnings: 200,
   /** Node records in the whole file. */
   maxDocumentNodes: 2_000_000,
+  /** Ids of hidden layers kept per artboard (for comparing versions). */
+  hiddenLayers: 10_000,
 };
 
 const CONTAINER_TYPES = new Set(['FRAME', 'GROUP', 'SECTION', 'SYMBOL', 'INSTANCE']);
@@ -189,6 +191,7 @@ class SceneBuilder {
   private readonly doc: FigDocument;
   private readonly warnings = new Set<string>();
   private readonly imageUids = new Set<string>();
+  private readonly hidden: string[] = [];
   private nextKey = 0;
   private nodeCount = 0;
   private textRuns = 0;
@@ -222,6 +225,7 @@ class SceneBuilder {
       children,
       imageUids: [...this.imageUids],
       warnings: [...this.warnings],
+      ...(this.hidden.length ? { hidden: this.hidden } : {}),
     };
   }
 
@@ -242,6 +246,9 @@ class SceneBuilder {
     }
     const node = applyOverrides(raw, scope);
     if (node.visible === false) {
+      if (node.guid && this.hidden.length < FIG_SCENE_LIMITS.hiddenLayers) {
+        this.hidden.push(guidKey(node.guid));
+      }
       return null;
     }
     this.nodeCount++;

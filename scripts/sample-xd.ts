@@ -1,19 +1,28 @@
 // Writes a small original demo design as an .xd file, used for README screenshots and manual testing:
-// `node scripts/sample-xd.ts <out.xd>`
+// `node scripts/sample-xd.ts <out.xd> [--earlier]`. With --earlier it writes an earlier version of the same design
+// with known differences, for comparing versions (see test/sample.test.ts for what differs).
 import { writeFileSync } from 'node:fs';
 import { crc32, deflateSync } from 'node:zlib';
 import type { AgcFill, AgcNode, AgcStroke } from '../src/xd/agc.ts';
 import { writeZip, type ZipInput } from '../test/support/zipWriter.ts';
 
-const out = process.argv[2];
+const args = process.argv.slice(2);
+const out = args.find((arg) => !arg.startsWith('--'));
+const earlier = args.includes('--earlier');
 if (!out) {
-  console.error('usage: node scripts/sample-xd.ts <out.xd>');
+  console.error('usage: node scripts/sample-xd.ts <out.xd> [--earlier]');
   process.exit(2);
 }
 
 const FONT = 'Helvetica Neue';
+// Both versions call id() in the same order, so the layers they share keep their ids; layers only in the earlier
+// version take theirs from extraId().
 let nextId = 0;
 const id = () => `demo-${nextId++}`;
+let nextExtraId = 0;
+const extraId = () => `demo-old-${nextExtraId++}`;
+/** The value of the earlier version, or of the current one. */
+const version = <T>(before: T, current: T): T => (earlier ? before : current);
 
 function rgb(hex: string, alpha?: number) {
   const n = Number.parseInt(hex.slice(1), 16);
@@ -75,20 +84,39 @@ function header(title: string): AgcNode {
   return group('Header', 0, 0, [rect('Header background', 0, 0, 430, 64, { fill: solid('#111827') }), text(title, 16, 40, 20, 'Bold', '#FFFFFF'), circle('Cart icon', 390, 32, 16, '#374151')]);
 }
 
-function productCard(name: string, detail: string, price: string, from: string, to: string, x: number): AgcNode {
+function productCard(name: string, detail: string, price: string, from: string, to: string, x: number, priceY = 216): AgcNode {
   return group(`Card / ${name}`, x, 344, [
     rect('Card background', 0, 0, 191, 236, { r: 12, stroke: border('#E5E7EB'), shadow: true }),
     rect('Thumbnail', 12, 12, 167, 128, { r: 8, fill: vertical(from, to) }),
     text(name, 12, 166, 15, 'Medium', '#111827'),
     text(detail, 12, 186, 12, 'Regular', '#6B7280'),
-    text(price, 12, 216, 16, 'Bold', '#2563EB'),
+    text(price, 12, priceY, 16, 'Bold', '#2563EB'),
   ]);
 }
 
-function button(label: string, y: number, labelX: number): AgcNode {
-  return group('Primary button', 16, y, [rect('Button background', 0, 0, 398, 52, { r: 26, fill: solid('#2563EB') }), text(label, labelX, 32, 16, 'Bold', '#FFFFFF')]);
+function button(label: string, y: number, labelX: number, radius = 26): AgcNode {
+  return group('Primary button', 16, y, [rect('Button background', 0, 0, 398, 52, { r: radius, fill: solid('#2563EB') }), text(label, labelX, 32, 16, 'Bold', '#FFFFFF')]);
 }
 
+const heroUid = version('demohero-v1', 'demohero');
+const shippingBanner = () =>
+  group('Shipping banner', 16, 600, [
+    rect('Banner background', 0, 0, 398, 88, { r: 12, fill: solid('#EEF2FF') }),
+    text('Free shipping over $50', 16, 38, 16, 'Bold', '#3730A3'),
+    text('Use code SHIPFREE at checkout', 16, 62, 13, 'Regular', '#4F46E5'),
+  ]);
+const promoBadge = (): AgcNode => ({
+  type: 'shape',
+  id: extraId(),
+  name: 'Promo badge',
+  transform: { tx: 340, ty: 96 },
+  shape: { type: 'circle', cx: 30, cy: 30, r: 30 },
+  style: { fill: solid('#F59E0B') },
+});
+
+// Earlier version: other hero image and headline, "See all" hidden, smaller "Popular", the second card 8 px further
+// right, the first card's price 4 px higher, a promo badge instead of the shipping banner, a squarer button and a
+// grey home tab.
 const home: AgcNode[] = [
   header('Sample Store'),
   {
@@ -97,24 +125,21 @@ const home: AgcNode[] = [
     name: 'Hero image',
     transform: { tx: 16, ty: 80 },
     shape: { type: 'rect', x: 0, y: 0, width: 398, height: 200, r: 16 },
-    style: { fill: { type: 'pattern', pattern: { width: 600, height: 300, meta: { ux: { uid: 'demohero', scaleBehavior: 'fill' } } } } },
+    style: { fill: { type: 'pattern', pattern: { width: 600, height: 300, meta: { ux: { uid: heroUid, scaleBehavior: 'fill' } } } } },
   },
-  text('Weekend Sale', 36, 230, 28, 'Bold', '#FFFFFF'),
+  text(version('Summer Sale', 'Weekend Sale'), 36, 230, 28, 'Bold', '#FFFFFF'),
   text('Up to 40% off selected items', 36, 254, 14, 'Regular', '#F1F5F9'),
-  text('Popular', 16, 324, 20, 'Bold', '#111827'),
-  text('See all', 366, 324, 14, 'Medium', '#2563EB'),
-  productCard('Ceramic Mug', 'Stoneware, 350 ml', '$18.00', '#DBEAFE', '#93C5FD', 16),
-  productCard('Linen Tote', 'Natural, 38 × 42 cm', '$24.00', '#FCE7F3', '#F9A8D4', 223),
-  group('Shipping banner', 16, 600, [
-    rect('Banner background', 0, 0, 398, 88, { r: 12, fill: solid('#EEF2FF') }),
-    text('Free shipping over $50', 16, 38, 16, 'Bold', '#3730A3'),
-    text('Use code SHIPFREE at checkout', 16, 62, 13, 'Regular', '#4F46E5'),
-  ]),
-  button('Shop now', 712, 165),
+  text('Popular', 16, 324, version(18, 20), 'Bold', '#111827'),
+  { ...text('See all', 366, 324, 14, 'Medium', '#2563EB'), ...(earlier ? { visible: false } : {}) },
+  productCard('Ceramic Mug', 'Stoneware, 350 ml', '$18.00', '#DBEAFE', '#93C5FD', 16, version(212, 216)),
+  productCard('Linen Tote', 'Natural, 38 × 42 cm', '$24.00', '#FCE7F3', '#F9A8D4', version(231, 223)),
+  // Both are built in both versions, so the ids after them stay in step.
+  ...version([promoBadge()], [shippingBanner()]),
+  button('Shop now', 712, 165, version(8, 26)),
   group('Tab bar', 0, 868, [
     rect('Tab bar background', 0, 0, 430, 64),
     line('Divider', 0, 0, 430, '#E5E7EB'),
-    circle('Home tab', 54, 32, 10, '#2563EB'),
+    circle('Home tab', 54, 32, 10, version('#9CA3AF', '#2563EB')),
     circle('Search tab', 161, 32, 10, '#9CA3AF'),
     circle('Saved tab', 268, 32, 10, '#9CA3AF'),
     circle('Profile tab', 375, 32, 10, '#9CA3AF'),
@@ -149,11 +174,35 @@ const cart: AgcNode[] = [
   button('Checkout', 380, 165),
 ];
 
-const artboards = [
-  { name: 'Home', x: 0, children: home },
-  { name: 'Product detail', x: 530, children: detail },
-  { name: 'Cart', x: 1060, children: cart },
-].map((artboard, i) => ({ ...artboard, path: `artboard-demo-${i}` }));
+// Only in the earlier version.
+const wishlist: AgcNode[] = [
+  { ...header('Wishlist'), id: extraId() },
+  { ...text('Nothing saved yet', 16, 120, 16, 'Medium', '#6B7280'), id: extraId() },
+];
+
+/** The same layers with other ids, as when a design is rebuilt: only their names match them up. */
+function renumbered(nodes: AgcNode[]): AgcNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    id: `${node.id}-rebuilt`,
+    ...(node.type === 'group' ? { group: { children: renumbered(node.group?.children ?? []) } } : {}),
+  }));
+}
+
+// The earlier version has no cart but a wishlist, and the product detail artboard under another id.
+const artboards = (
+  earlier
+    ? [
+        { name: 'Home', x: 0, children: home, path: 'artboard-demo-0', background: '#FFFFFF' },
+        { name: 'Product detail', x: 530, children: renumbered(detail), path: 'artboard-old-1', background: '#F9FAFB' },
+        { name: 'Wishlist', x: 1060, children: wishlist, path: 'artboard-old-2', background: '#F9FAFB' },
+      ]
+    : [
+        { name: 'Home', x: 0, children: home, path: 'artboard-demo-0', background: '#F9FAFB' },
+        { name: 'Product detail', x: 530, children: detail, path: 'artboard-demo-1', background: '#F9FAFB' },
+        { name: 'Cart', x: 1060, children: cart, path: 'artboard-demo-2', background: '#F9FAFB' },
+      ]
+);
 
 const files: ZipInput[] = [
   { name: 'mimetype', data: 'application/vnd.adobe.sparkler.project+dcx', store: true },
@@ -171,7 +220,7 @@ const files: ZipInput[] = [
     }),
   },
   { name: 'resources/graphics/graphicContent.agc', data: JSON.stringify({ resources: { meta: { ux: { symbols: [] } } } }) },
-  { name: 'resources/demohero', data: heroPng(600, 300), store: true },
+  { name: `resources/${heroUid}`, data: heroPng(600, 300, version(170, 430)), store: true },
   ...artboards.map((a) => ({
     name: `artwork/${a.path}/graphics/graphicContent.agc`,
     data: JSON.stringify({
@@ -179,7 +228,7 @@ const files: ZipInput[] = [
         {
           type: 'artboard',
           id: a.path,
-          style: { fill: solid('#F9FAFB') },
+          style: { fill: solid(a.background) },
           // Artboard children are stored in document coordinates.
           artboard: { children: a.children.map((node) => ({ ...node, transform: { ...node.transform, tx: (node.transform?.tx ?? 0) + a.x } })) },
         },
@@ -191,14 +240,14 @@ writeFileSync(out, writeZip(files));
 console.log(`Wrote ${out}`);
 
 /** Sunset gradient with a sun and two hills, encoded as an RGB PNG. */
-function heroPng(width: number, height: number): Buffer {
+function heroPng(width: number, height: number, sunX: number): Buffer {
   const rows: Buffer[] = [];
   for (let y = 0; y < height; y++) {
     const row = Buffer.alloc(1 + width * 3);
     for (let x = 0; x < width; x++) {
       const t = y / height;
       let color = [Math.round(99 + 150 * t), Math.round(102 + 60 * t), Math.round(241 - 120 * t)];
-      if (Math.hypot(x - 430, y - 120) < 60) {
+      if (Math.hypot(x - sunX, y - 120) < 60) {
         color = [253, 224, 71];
       }
       if (y > height - 70 - 40 * Math.sin((x / width) * Math.PI)) {

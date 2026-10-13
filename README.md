@@ -11,6 +11,7 @@ Open Adobe XD (`.xd`) files and Figma local copies (`.fig`) in VS Code and inspe
 - Search the text and layer names of every artboard, Japanese included
 - Save embedded images as they are stored, export any layer as SVG or as PNG at 1x/2x/3x
 - Overlay a screenshot of the implementation on an artboard to compare the two
+- Compare two versions of a design: changed, added and removed artboards and layers, with before → after values
 - Reloads automatically when the file changes on disk
 - Fully offline: the file is unzipped and rendered locally, nothing is uploaded
 
@@ -72,6 +73,32 @@ black), hide or remove it. While it is shown, the arrow keys nudge it by 1 px (S
 offset. Each artboard keeps its own screenshot until the editor is closed; nothing is written to disk. Screenshots
 over 50 MB are refused, and the board view shows no overlays.
 
+## Compare versions
+
+When a revised file arrives, click **Compare…** in the toolbar and pick the earlier version (`.xd` or `.fig`). The open
+file is the current version; **Swap** turns that around and **Exit** leaves compare mode. Artboards are matched by id,
+then by name (a name used more than once is not matched); layers by id, then by name under a matched parent.
+
+- The artboard list counts the changed layers of each artboard and marks **New** and **Removed** artboards (removed
+  ones are listed last and open as the earlier version); **Changed only** hides the rest. The board shows the same
+  badges on the artboard titles.
+- On the canvas, added layers are outlined in green, changed ones in amber, and removed ones are dashed ghosts where
+  they were. **Before** / **After** (or `` ` ``) shows the other version of the artboard at the same zoom, with the
+  same layer selected.
+- The inspector lists the changes of the artboard (click one to select it) and, for a layer, each changed property as
+  before → after: text, position and size, rotation, opacity, fill, image, border, radius, shadow, typography,
+  visibility, the outline of a path, and the name.
+
+Values are compared the way the inspector shows them (lengths to 0.01 px, colors as hex and alpha), so nothing is
+reported that the inspector shows as equal. Positions are compared in artboard pixels, but a group that moved together
+with all its layers is marked once, on the group (a frame by its own box); its layers are marked only where they moved
+by a different amount. A group sized by its layers reports no size of its own. Layers inside an added or removed
+group are part of that change. Images are compared by their content. The width of positioned XD text depends on the
+fonts installed, so it is not compared; its content and typography are.
+
+The other file is opened with the same limits as any design file. Comparing stops after 250,000 layers per file (the
+artboards left out are marked), and up to 1,000 changes are listed per artboard.
+
 ## Figma files (.fig)
 
 In Figma choose **File → Save local copy…** and open the downloaded `.fig` file in VS Code. Every top-level frame
@@ -113,6 +140,7 @@ code --install-extension artboard-inspector-0.3.0.vsix
 | `W` | Fit width |
 | `Esc` | Select the parent layer (Board: then the artboard, then nothing) |
 | Arrow keys, Shift + arrow keys | Nudge the overlaid screenshot by 1 px / 10 px |
+| `` ` `` | Compare mode: switch between the earlier and the current version of the artboard |
 | Double-click (Board) | Open that artboard on its own |
 
 ## Limitations
@@ -138,15 +166,16 @@ pnpm coverage                         # fast tests with Node's built-in coverage
 pnpm test:e2e                         # Playwright in the installed Google Chrome against the browser preview
 pnpm test:vscode                      # extension tests inside VS Code (uses the installed app if found)
 pnpm smoke <file.xd|file.fig>...     # parse and render every artboard, print warnings
-pnpm preview <file.xd|file.fig> <dir> # static browser copy of the webview for UI checks
-pnpm sample <out.xd>                  # write an original demo design (used for the screenshots above)
+pnpm preview <file.xd|file.fig> <dir> [--compare <earlier>] # static browser copy of the webview for UI checks
+pnpm sample <out.xd> [--earlier]      # write an original demo design (used for the screenshots above), or its earlier version
 ```
 
 - `pnpm test:e2e` checks the synthetic demo (selection, inspector values, redlines, zoom, board view, images
   actually decoded, exports, no console/CSP errors). To run the generic checks on your own files as well, list them in
   `E2E_FILES`, separated by `:` — e.g. `E2E_FILES="$HOME/a.xd:$HOME/b.fig" pnpm test:e2e`; set `E2E_EXPORT_DIR` to a
-  folder outside the repository to keep the files those checks export. It needs Google Chrome; no Playwright browser
-  download is required.
+  folder outside the repository to keep the files those checks export. `E2E_COMPARE` lists pairs of versions the same
+  way, earlier then later (`E2E_COMPARE="$HOME/v1.xd:$HOME/v2.xd" pnpm test:e2e`), to compare them and check the
+  reported values against the inspector. It needs Google Chrome; no Playwright browser download is required.
 - `pnpm test:vscode` opens the demo `.xd` and a small synthetic `.fig` in a real VS Code and checks that the
   Artboard Inspector editors open them by default, and that a file posted from a webview is saved next to the design
   file. Set `VSCODE_EXECUTABLE` to use a specific VS Code build;

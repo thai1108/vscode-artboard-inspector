@@ -1,6 +1,6 @@
+import type { ArtboardDiff, CompareSummary } from '../compare/compare.ts';
 import type { HostMessage, ImagePayload } from '../protocol.ts';
 import type { BoardLayout } from '../scene/board.ts';
-import { extensionForType } from '../render/export.ts';
 import { measureBetween, type Guide } from '../render/measure.ts';
 import { renderArtboardSvg } from '../render/svg.ts';
 import { fmt, type Box } from '../render/geometry.ts';
@@ -8,9 +8,24 @@ import type { ArtboardScene, ArtboardSummary, SceneNode } from '../scene/scene.t
 import type { SearchHit } from '../search.ts';
 import { BoardView } from './board.ts';
 import { indexScene, measureLayers, type IndexedNode } from './bounds.ts';
+import {
+  artboardBadge,
+  artboardChangesSection,
+  changeOf,
+  Comparison,
+  counterpartKey,
+  diffMarks,
+  keyOn,
+  layerChangesSection,
+  layerStatuses,
+  summaryText,
+  type DiffMark,
+  type Version,
+} from './compare.ts';
 import { escapeHtml } from '../render/html.ts';
 import { byId } from './dom.ts';
 import { exportLayer, type ExportFormat, type ExportTarget } from './exporter.ts';
+import { ImageStore } from './images.ts';
 import { renderInspector } from './inspector.ts';
 import { renderLayerTree } from './layers.ts';
 import { drawOverlay } from './overlay.ts';
@@ -34,6 +49,7 @@ byId('app').innerHTML = `
     <section class="pane">
       <div class="pane-title">Artboards <span id="artboard-count" class="dim"></span></div>
       <input id="artboard-filter" type="search" placeholder="Filter artboards" spellcheck="false">
+      <label id="compare-filter" class="compare-filter" hidden><input id="compare-changed-only" type="checkbox"> Changed only</label>
       <ul id="artboards"></ul>
     </section>
     <section class="pane grow">
@@ -50,8 +66,10 @@ byId('app').innerHTML = `
       </div>
       <select id="board-page" title="Page" hidden></select>
       <span id="artboard-title"></span>
+      <span id="version-tag" class="version-tag" hidden></span>
       <span class="spacer"></span>
       <span id="warnings" class="warning-badge" hidden></span>
+      <button id="compare-start" class="text-button" title="Compare with another version of this design (.xd or .fig)">Compare…</button>
       <button id="screenshot-load" class="text-button" title="Overlay a screenshot (PNG, JPEG or WebP) on this artboard. You can also paste one, or drop one while holding Shift." hidden>Overlay</button>
       <button id="zoom-out" class="icon-button" title="Zoom out (-)">−</button>
       <button id="zoom-value" class="zoom-value" title="Actual size (1)">100%</button>
@@ -59,6 +77,17 @@ byId('app').innerHTML = `
       <button id="fit-width" class="text-button" title="Fit width (W)">Fit width</button>
       <button id="fit-all" class="text-button" title="Fit artboard (0)">Fit</button>
     </header>
+    <div id="compare-bar" hidden>
+      <span id="compare-files" class="compare-files"></span>
+      <span id="compare-summary" class="dim"></span>
+      <span class="spacer"></span>
+      <div class="mode-toggle" role="group" aria-label="Version shown">
+        <button id="compare-before" class="text-button" title="Show the earlier version (\`)">Before</button>
+        <button id="compare-after" class="text-button" title="Show the current version (\`)">After</button>
+      </div>
+      <button id="compare-swap" class="text-button" title="Make the other file the current version and this one the earlier">Swap</button>
+      <button id="compare-exit" class="text-button" title="Leave compare mode">Exit</button>
+    </div>
     <div id="screenshot-bar" hidden></div>
     <div id="viewport">
       <div id="canvas"></div>
@@ -90,6 +119,15 @@ const ui = {
   message: byId('message'),
   inspector: byId('inspector'),
   toast: byId('toast'),
+  versionTag: byId('version-tag'),
+  compareStart: byId('compare-start'),
+  compareBar: byId('compare-bar'),
+  compareFiles: byId('compare-files'),
+  compareSummary: byId('compare-summary'),
+  compareBefore: byId<HTMLButtonElement>('compare-before'),
+  compareAfter: byId<HTMLButtonElement>('compare-after'),
+  compareFilter: byId('compare-filter'),
+  changedOnly: byId<HTMLInputElement>('compare-changed-only'),
 };
 
 type Mode = 'artboard' | 'board';
@@ -97,6 +135,7 @@ type Mode = 'artboard' | 'board';
 let artboards: ArtboardSummary[] = [];
 let artboardsById = new Map<string, ArtboardSummary>();
 let fileName = '';
+/** The scene drawn in the single view: the current version's, or the earlier one's while comparing (`version`). */
 let scene: ArtboardScene | null = null;
 let index = new Map<string, IndexedNode>();
 let boxes = new Map<string, Box>();
@@ -104,11 +143,17 @@ let selected: string | null = null;
 let hovered: string | null = null;
 /** Layer to select once its artboard is shown (a search hit in another artboard). */
 let pendingLayer: { artboard: string; key: string } | null = null;
-const imageUrls = new Map<string, string>();
-/** The blobs behind imageUrls, kept for exports (the CSP blocks fetching blob: URLs). */
-const imageBlobs = new Map<string, Blob>();
-/** Images whose bytes did not arrive as a Uint8Array; shown as a layer warning instead of a silent broken image. */
-const undecodableImages = new Set<string>();
+/** Images of the file shown as the current version; `beforeImages` hold the earlier one's while comparing. */
+let images = new ImageStore();
+let beforeImages = new ImageStore();
+let comparison: Comparison | null = null;
+let version: Version = 'after';
+/** The last current-version scene shown, to switch back to from the earlier version without asking the host. */
+let lastAfterScene: ArtboardScene | null = null;
+/** How to show a scene requested from the host when it arrives: which version, the layer to select, whether to fit. */
+let pendingView: { id: string; version: Version; select: string | null; fit: boolean } | null = null;
+/** Outlines of the changed layers of the artboard shown. */
+let marks: DiffMark[] = [];
 const state = vscode.getState() ?? {};
 
 let mode: Mode = state.mode ?? 'artboard';
@@ -129,10 +174,11 @@ const board = new BoardView({
   inspector: ui.inspector,
   layers: ui.layers,
   viewport,
-  imageUrl: (uid) => imageUrls.get(uid),
-  imageFormat,
-  requestScenes: (ids) => vscode.postMessage({ type: 'loadArtboards', ids, knownImages: [...imageUrls.keys()] }),
+  imageUrl: (uid) => images.url(uid),
+  imageFormat: (uid) => images.format(uid),
+  requestScenes: (ids) => vscode.postMessage({ type: 'loadArtboards', ids, knownImages: images.known() }),
   onSelectionChange: () => renderArtboardList(),
+  titleBadge: (id) => artboardBadge(comparison?.entry(id, 'after')),
 });
 
 const search = new SearchPanel({
@@ -166,12 +212,19 @@ window.addEventListener('message', (event: MessageEvent<HostMessage>) => {
       onDocument(message.fileName, message.artboards, message.board);
       break;
     case 'artboard':
-      void onArtboard(message.scene, message.images);
+      if (message.side === 'before') {
+        void onBeforeArtboard(message.scene, message.images, message.diff);
+      } else {
+        void onArtboard(message.scene, message.images, message.diff);
+      }
       break;
     case 'scenes':
-      addImages(message.images);
-      noteUndecodableImages(message.scenes);
+      images.add(message.images);
+      images.noteUndecodable(message.scenes);
       board.onScenes(message.scenes, message.failed);
+      break;
+    case 'compare':
+      onCompare(message.summary);
       break;
     case 'searchResults':
       search.onResults(message);
@@ -215,34 +268,123 @@ function onDocument(name: string, list: ArtboardSummary[], layout: BoardLayout):
   }
 }
 
-function addImages(images: ImagePayload[]): void {
-  for (const image of images) {
-    if (imageUrls.has(image.uid)) {
-      continue;
+/** Images of the version drawn in the single view. */
+function shownImages(): ImageStore {
+  return version === 'before' ? beforeImages : images;
+}
+
+/** The compare summary entry of the artboard drawn in the single view. */
+function shownEntry() {
+  return scene ? comparison?.entry(scene.id, version) : undefined;
+}
+
+function shownDiff(): ArtboardDiff | undefined {
+  return comparison?.diff(shownEntry());
+}
+
+/**
+ * Compare mode started, was redone or swapped, or ended. When the file shown as the current version changes (swap,
+ * or ending a swapped comparison), the image stores trade places and the host sends that file's document next.
+ */
+function onCompare(summary: CompareSummary | null): void {
+  const previous = comparison;
+  if (previous && summary && previous.sameAs(summary)) {
+    return;
+  }
+  const flipped = (previous?.summary.swapped ?? false) !== (summary?.swapped ?? false);
+  const entry = shownEntry();
+  const shownKey = selected !== null && selected !== ARTBOARD ? selected : null;
+  // The selected layer as a key of the current version's scene.
+  const afterKey = shownKey && version === 'before' ? counterpartKey(previous?.diff(entry), 'before', shownKey) : shownKey;
+  if (flipped) {
+    [images, beforeImages] = [beforeImages, images];
+  } else {
+    beforeImages.clear();
+  }
+  comparison = summary ? new Comparison(summary) : null;
+  pendingView = null;
+  lastAfterScene = null;
+  if (flipped) {
+    // The other file becomes the one shown (its document comes next): open the same artboard and layer there.
+    const counterpart = entry?.beforeId;
+    const key = version === 'before' ? shownKey : afterKey && previous ? counterpartKey(previous.diff(entry), 'after', afterKey) : null;
+    const shown = mode === 'artboard' && scene !== null;
+    scene = null;
+    version = 'after';
+    if (counterpart) {
+      state.artboardId = counterpart;
+      pendingView = shown ? { id: counterpart, version: 'after', select: key, fit: false } : null;
     }
-    if (!(image.data instanceof Uint8Array)) {
-      undecodableImages.add(image.uid);
-      continue;
+  } else if (mode === 'artboard' && scene) {
+    // Ask again for the current version of the artboard shown: it comes with its diff, or without when comparing ended.
+    const target = (version === 'after' ? scene.id : entry?.afterId) ?? state.artboardId ?? artboards[0]?.id;
+    if (target) {
+      pendingView = { id: target, version: 'after', select: afterKey, fit: target !== scene.id };
+      requestArtboard(target);
     }
-    const blob = new Blob([image.data as Uint8Array<ArrayBuffer>], { type: image.mime });
-    imageBlobs.set(image.uid, blob);
-    imageUrls.set(image.uid, URL.createObjectURL(blob));
+  }
+  marks = [];
+  renderCompareBar();
+  renderArtboardList();
+  board.refreshTitles();
+  if (mode === 'artboard' && scene) {
+    refreshSelection();
   }
 }
 
-function imageFormat(uid: string): string | undefined {
-  return extensionForType(imageBlobs.get(uid)?.type ?? '') ?? undefined;
+function renderCompareBar(): void {
+  const summary = comparison?.summary;
+  ui.compareBar.hidden = !summary;
+  ui.compareStart.hidden = !!summary;
+  ui.compareFilter.hidden = !summary;
+  ui.versionTag.hidden = !summary || mode !== 'artboard' || !scene;
+  ui.versionTag.textContent = version === 'before' ? 'Before' : 'After';
+  ui.versionTag.classList.toggle('before', version === 'before');
+  if (!summary) {
+    return;
+  }
+  ui.compareFiles.innerHTML =
+    `<span class="compare-file" title="Earlier version">${escapeHtml(summary.beforeName)}</span>` +
+    '<span class="compare-arrow">→</span>' +
+    `<span class="compare-file" title="Current version">${escapeHtml(summary.afterName)}</span>`;
+  ui.compareSummary.textContent = summaryText(summary);
+  ui.compareSummary.title =
+    `Layers matched by id: ${summary.matched.byId.toLocaleString('en-US')}, by name: ${summary.matched.byName.toLocaleString('en-US')}` +
+    (summary.truncated ? '. Some artboards were not compared (too many layers).' : '');
+  const entry = shownEntry();
+  const single = mode === 'artboard';
+  ui.compareBefore.disabled = !single || !entry?.beforeId;
+  ui.compareAfter.disabled = !single || !entry?.afterId;
+  for (const [button, value] of [
+    [ui.compareBefore, 'before'],
+    [ui.compareAfter, 'after'],
+  ] as const) {
+    const active = single && version === value;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
 }
 
-function noteUndecodableImages(scenes: ArtboardScene[]): void {
-  for (const target of scenes) {
-    for (const uid of target.imageUids) {
-      const warning = `Image ${uid} could not be decoded`;
-      if (undecodableImages.has(uid) && !target.warnings.includes(warning)) {
-        target.warnings.push(warning);
-      }
-    }
+/**
+ * Shows the other version of the artboard in the single view, keeping zoom and pan, and selecting `select` there
+ * (by default the same layer as now, where it exists).
+ */
+function showVersion(next: Version, select?: string | null): void {
+  const entry = shownEntry();
+  const target = next === 'after' ? entry?.afterId : entry?.beforeId;
+  if (!comparison || !entry || !target || mode !== 'artboard' || next === version) {
+    return;
   }
+  const key = select !== undefined ? select : selected !== null && selected !== ARTBOARD ? counterpartKey(comparison.diff(entry), version, selected) : selected;
+  const cached = next === 'before' ? comparison.beforeScenes.get(target) : lastAfterScene?.id === target ? lastAfterScene : undefined;
+  if (cached) {
+    version = next;
+    selected = key;
+    void showArtboard(cached, false);
+    return;
+  }
+  pendingView = { id: target, version: next, select: key, fit: false };
+  requestArtboard(target, next);
 }
 
 function setMode(next: Mode): void {
@@ -258,10 +400,18 @@ function setMode(next: Mode): void {
 }
 
 function enterBoard(): void {
-  if (scene) {
-    board.addScene(scene);
+  // The board shows the current version only.
+  const afterScene = version === 'after' ? scene : lastAfterScene;
+  if (afterScene) {
+    board.addScene(afterScene);
   }
+  if (version === 'before') {
+    version = 'after';
+    scene = afterScene;
+  }
+  pendingView = null;
   setMode('board');
+  renderCompareBar();
   screenshots.show(null);
   ui.message.hidden = true;
   ui.warnings.hidden = true;
@@ -277,15 +427,16 @@ function enterArtboard(id?: string): void {
   setMode('artboard');
   ui.overlay.innerHTML = '';
   const targetId = id ?? scene?.id ?? state.artboardId ?? artboards[0]?.id;
-  const cached = targetId ? board.sceneOf(targetId) : undefined;
-  if (targetId === scene?.id && scene) {
-    void showArtboard(scene, true);
-  } else if (cached) {
+  // Scenes the board holds came without their diff; while comparing, ask the host, which sends both.
+  const diffMissing = comparison !== null && targetId !== undefined && !comparison.diff(comparison.entry(targetId, 'after'));
+  const cached = targetId && !diffMissing ? (targetId === scene?.id ? scene : board.sceneOf(targetId)) : undefined;
+  if (cached) {
     void showArtboard(cached, true);
   } else if (targetId) {
     scene = null;
     requestArtboard(targetId);
   }
+  renderCompareBar();
 }
 
 function renderPageSelect(): void {
@@ -300,29 +451,74 @@ function renderBoardTitle(): void {
   ui.title.innerHTML = `${escapeHtml(page)} <span class="dim">${board.artboardCount} artboards</span>`;
 }
 
-function requestArtboard(id: string): void {
-  vscode.postMessage({ type: 'loadArtboard', id, knownImages: [...imageUrls.keys()] });
+function requestArtboard(id: string, side: Version = 'after'): void {
+  if (side === 'before') {
+    vscode.postMessage({ type: 'loadArtboard', id, knownImages: beforeImages.known(), side: 'before' });
+  } else {
+    vscode.postMessage({ type: 'loadArtboard', id, knownImages: images.known() });
+  }
 }
 
-async function onArtboard(next: ArtboardScene, images: ImagePayload[]): Promise<void> {
-  addImages(images);
-  noteUndecodableImages([next]);
+/** Takes the view a scene was requested for, if this is that scene. */
+function takePendingView(next: ArtboardScene, side: Version): { select: string | null; fit: boolean } | null {
+  const view = pendingView;
+  if (view?.id !== next.id || view.version !== side) {
+    return null;
+  }
+  pendingView = null;
+  return view;
+}
+
+async function onArtboard(next: ArtboardScene, received: ImagePayload[], diff: ArtboardDiff | undefined): Promise<void> {
+  images.add(received);
+  images.noteUndecodable([next]);
+  if (diff) {
+    comparison?.addDiff(diff);
+  }
   if (mode === 'board') {
     board.addScene(next);
     return;
   }
-  await showArtboard(next, scene?.id !== next.id);
+  const view = takePendingView(next, 'after');
+  version = 'after';
+  if (view) {
+    selected = view.select;
+  }
+  await showArtboard(next, view ? view.fit : scene?.id !== next.id);
+}
+
+/** The earlier version of an artboard, for the Before view; kept until the comparison changes. */
+async function onBeforeArtboard(next: ArtboardScene, received: ImagePayload[], diff: ArtboardDiff | undefined): Promise<void> {
+  beforeImages.add(received);
+  beforeImages.noteUndecodable([next]);
+  if (!comparison) {
+    return;
+  }
+  if (diff) {
+    comparison.addDiff(diff);
+  }
+  comparison.beforeScenes.set(next.id, next);
+  const view = takePendingView(next, 'before');
+  if (view && mode === 'artboard') {
+    version = 'before';
+    selected = view.select;
+    await showArtboard(next, view.fit);
+  }
 }
 
 async function showArtboard(next: ArtboardScene, fit: boolean): Promise<void> {
   const sameArtboard = !fit;
   scene = next;
-  state.artboardId = next.id;
-  vscode.setState(state);
+  if (version === 'after') {
+    lastAfterScene = next;
+    state.artboardId = next.id;
+    vscode.setState(state);
+  }
 
   ui.message.hidden = true;
-  ui.canvas.innerHTML = renderArtboardSvg(next, (uid) => imageUrls.get(uid));
-  screenshots.show(next.id);
+  const shown = shownImages();
+  ui.canvas.innerHTML = renderArtboardSvg(next, (uid) => shown.url(uid));
+  screenshots.show(version === 'after' ? next.id : null);
   await document.fonts.ready;
   const svg = ui.canvas.querySelector<SVGSVGElement>('svg.dv-artboard');
   index = indexScene(next);
@@ -338,7 +534,9 @@ async function showArtboard(next: ArtboardScene, fit: boolean): Promise<void> {
   ui.warnings.textContent = `⚠ ${warningCount}`;
   ui.warnings.title = `${warningCount} layer issue(s) — see the inspector`;
   ui.layers.innerHTML = renderLayerTree(next.children);
+  markChangedLayers();
   renderArtboardList();
+  renderCompareBar();
   viewport.setContent(next.width, next.height);
   if (!sameArtboard) {
     viewport.fitWidth();
@@ -355,7 +553,8 @@ async function showArtboard(next: ArtboardScene, fit: boolean): Promise<void> {
 }
 
 function openSearchHit(hit: SearchHit): void {
-  if (mode === 'artboard' && scene?.id === hit.artboard) {
+  // Hits are layers of the current version.
+  if (mode === 'artboard' && version === 'after' && scene?.id === hit.artboard) {
     pendingLayer = null;
     if (index.has(hit.key)) {
       select(hit.key, { reveal: true });
@@ -363,6 +562,7 @@ function openSearchHit(hit: SearchHit): void {
     return;
   }
   pendingLayer = { artboard: hit.artboard, key: hit.key };
+  pendingView = null;
   if (mode === 'board') {
     enterArtboard(hit.artboard);
   } else {
@@ -370,17 +570,25 @@ function openSearchHit(hit: SearchHit): void {
   }
 }
 
+/** The current version's artboards, then (while comparing) those only in the earlier version. */
 function renderArtboardList(): void {
   const filter = ui.artboardFilter.value.trim().toLowerCase();
-  const active = mode === 'board' ? board.selectedArtboard : scene?.id;
-  ui.artboards.innerHTML = artboards
-    .filter((artboard) => !filter || artboard.name.toLowerCase().includes(filter))
-    .map(
-      (artboard) =>
-        `<li class="artboard-item${artboard.id === active ? ' active' : ''}" data-id="${escapeHtml(artboard.id)}" title="${escapeHtml(artboard.name)}">` +
-        `<span class="artboard-name">${escapeHtml(artboard.name)}</span><span class="dim">${fmt(artboard.width)}×${fmt(artboard.height)}</span></li>`,
-    )
-    .join('');
+  const changedOnly = comparison !== null && ui.changedOnly.checked;
+  const active = mode === 'board' ? board.selectedArtboard : version === 'after' ? scene?.id : undefined;
+  const shown = shownEntry();
+  const item = (artboard: { id: string; name: string; width: number; height: number }, side: Version) => {
+    const entry = comparison?.entry(artboard.id, side);
+    if ((filter && !artboard.name.toLowerCase().includes(filter)) || (changedOnly && entry?.status === 'unchanged')) {
+      return '';
+    }
+    const isActive = (side === 'after' && artboard.id === active) || (entry !== undefined && entry === shown && mode === 'artboard');
+    return (
+      `<li class="artboard-item${isActive ? ' active' : ''}${side === 'before' ? ' removed' : ''}" data-id="${escapeHtml(artboard.id)}"${side === 'before' ? ' data-version="before"' : ''} title="${escapeHtml(artboard.name)}">` +
+      `<span class="artboard-name">${escapeHtml(artboard.name)}</span>${artboardBadge(entry)}<span class="dim">${fmt(artboard.width)}×${fmt(artboard.height)}</span></li>`
+    );
+  };
+  const removed = (comparison?.removed ?? []).map((entry) => item({ ...entry, id: entry.beforeId ?? '' }, 'before'));
+  ui.artboards.innerHTML = artboards.map((artboard) => item(artboard, 'after')).join('') + removed.join('');
 }
 
 function boxOf(key: string | null): Box | null {
@@ -418,13 +626,20 @@ function refreshSelection(): void {
     return;
   }
   const node = selected && selected !== ARTBOARD ? (index.get(selected)?.node ?? null) : null;
+  const shown = shownImages();
+  let changes: string | undefined;
+  if (comparison) {
+    const entry = shownEntry();
+    changes = node ? layerChangesSection(changeOf(shownDiff(), version, node.key), comparison.summary) : artboardChangesSection(entry, shownDiff(), version);
+  }
   ui.inspector.innerHTML = renderInspector({
     scene,
     node,
     box: node ? boxOf(node.key) : null,
     ancestors: node ? ancestorsOf(node.key) : [],
     layerCount: index.size,
-    imageFormat,
+    imageFormat: (uid) => shown.format(uid),
+    changes,
   });
   for (const row of ui.layers.querySelectorAll('.layer-row.selected')) {
     row.classList.remove('selected');
@@ -453,7 +668,24 @@ function redrawOverlay(): void {
     selected: selected === ARTBOARD ? null : selectedBox,
     hovered: hovered === ARTBOARD ? null : hoveredBox,
     guides,
+    marks,
   });
+}
+
+/** Colours the changed layers in the tree and outlines them on the canvas, for the version shown. */
+function markChangedLayers(): void {
+  const diff = shownDiff();
+  marks = diffMarks(diff, version, boxes);
+  const statuses = layerStatuses(diff, version);
+  if (!statuses.size) {
+    return;
+  }
+  for (const row of ui.layers.querySelectorAll<HTMLElement>('.layer-row')) {
+    const status = statuses.get(row.dataset['key'] ?? '');
+    if (status) {
+      row.classList.add(`diff-${status}`);
+    }
+  }
 }
 
 function layerKeyAt(target: EventTarget | null): string | null {
@@ -544,20 +776,54 @@ ui.layers.addEventListener('pointerleave', () => {
 ui.artboards.addEventListener('click', (event) => {
   const item = (event.target as Element).closest<HTMLElement>('.artboard-item');
   const id = item?.dataset['id'];
-  if (id && mode === 'board') {
+  if (!id) {
+    return;
+  }
+  if (item.dataset['version'] === 'before') {
+    // Only in the earlier version: shown on its own, as Before.
+    if (mode === 'board') {
+      board.deactivate();
+      setMode('artboard');
+      ui.overlay.innerHTML = '';
+    }
+    const cached = comparison?.beforeScenes.get(id);
+    if (cached) {
+      version = 'before';
+      selected = null;
+      void showArtboard(cached, true);
+    } else {
+      pendingView = { id, version: 'before', select: null, fit: true };
+      requestArtboard(id, 'before');
+    }
+  } else if (mode === 'board') {
     board.flyTo(id);
     state.boardPage = board.currentPage;
     vscode.setState(state);
     renderPageSelect();
     renderBoardTitle();
-  } else if (id && id !== scene?.id) {
+  } else if (id !== scene?.id || version !== 'after') {
+    pendingView = null;
     requestArtboard(id);
   }
 });
 ui.artboardFilter.addEventListener('input', renderArtboardList);
+ui.changedOnly.addEventListener('change', renderArtboardList);
 
 ui.inspector.addEventListener('click', (event) => {
   const target = event.target as Element;
+  const listed = target.closest<HTMLElement>('[data-change]');
+  if (listed && mode === 'artboard') {
+    const change = shownDiff()?.changes[Number(listed.dataset['change'])];
+    const key = change ? keyOn(change, version) : null;
+    if (key !== null) {
+      select(key, { reveal: true });
+    } else if (change) {
+      // Only in the other version: show that one with the layer selected.
+      const other: Version = version === 'after' ? 'before' : 'after';
+      showVersion(other, keyOn(change, other));
+    }
+    return;
+  }
   const crumb = target.closest<HTMLElement>('[data-select]');
   if (crumb) {
     if (mode === 'board') {
@@ -588,6 +854,11 @@ byId('zoom-out').addEventListener('click', () => viewport.zoomOut());
 byId('zoom-value').addEventListener('click', () => viewport.actualSize());
 byId('fit-width').addEventListener('click', () => viewport.fitWidth());
 byId('fit-all').addEventListener('click', () => viewport.fitAll());
+ui.compareStart.addEventListener('click', () => vscode.postMessage({ type: 'pickCompare' }));
+byId('compare-swap').addEventListener('click', () => vscode.postMessage({ type: 'swapCompare' }));
+byId('compare-exit').addEventListener('click', () => vscode.postMessage({ type: 'exitCompare' }));
+ui.compareBefore.addEventListener('click', () => showVersion('before'));
+ui.compareAfter.addEventListener('click', () => showVersion('after'));
 ui.modeArtboard.addEventListener('click', () => {
   if (mode !== 'artboard') {
     enterArtboard();
@@ -649,6 +920,12 @@ window.addEventListener('keydown', (event) => {
     case 'W':
       viewport.fitWidth();
       break;
+    case '`':
+      if (!comparison) {
+        return;
+      }
+      showVersion(version === 'after' ? 'before' : 'after');
+      break;
     default:
       return;
   }
@@ -676,7 +953,7 @@ async function runExport(format: ExportFormat, scale: number): Promise<void> {
   }
   exporting = true;
   try {
-    const { fileName, data } = await exportLayer(target, format, scale, imageBlobs);
+    const { fileName, data } = await exportLayer(target, format, scale, mode === 'board' ? images.blobs : shownImages().blobs);
     vscode.postMessage({ type: 'save', fileName, data });
   } catch (error) {
     showToast(`Export failed: ${(error as Error).message}`, 4000);

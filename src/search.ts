@@ -2,6 +2,7 @@
 // opened file, so the webview only ever receives a capped list of hits.
 import type { DesignDocument } from './document.ts';
 import type { ArtboardScene, SceneNode } from './scene/scene.ts';
+import { WIDE_CHARACTER } from './scene/text.ts';
 
 /** Caps that keep the index of a huge or hostile file bounded; real files stay far below them. */
 export const SEARCH_LIMITS = {
@@ -24,8 +25,6 @@ const EXCERPT_LENGTH = 80;
 const EXCERPT_LEAD = 24;
 /** Width kept before the match when the start is cut. */
 const EXCERPT_CONTEXT = 12;
-/** Characters drawn about twice as wide as Latin letters: CJK, kana, hangul, full-width forms, emoji. */
-const WIDE = /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6\u{1f000}-\u{3ffff}]/u;
 
 /** Anything outside printable ASCII and whitespace may change under NFKC. */
 const NEEDS_NFKC = /[^\s!-~]/;
@@ -184,7 +183,7 @@ export function excerpt(value: string, needle: string, length = EXCERPT_LENGTH):
 /** Where to cut the text before a match at `at`: nowhere when it fits the sidebar, else shortly before the match. */
 function excerptStart(flat: string, at: number): number {
   const before = Array.from(flat.slice(0, at));
-  const widths = before.map((char) => (WIDE.test(char) ? 2 : 1));
+  const widths = before.map((char) => (WIDE_CHARACTER.test(char) ? 2 : 1));
   if (widths.reduce((sum, width) => sum + width, 0) <= EXCERPT_LEAD) {
     return 0;
   }

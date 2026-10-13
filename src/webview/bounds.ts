@@ -1,10 +1,7 @@
 import { geometryElement } from '../render/svg.ts';
 import { intersect, union, type Box } from '../render/geometry.ts';
-import type { ArtboardScene, Geometry, SceneNode, ShapeNode, TextNode } from '../scene/scene.ts';
-
-// Noto Sans ascender/descender: XD sizes text boxes from the baseline with these, not from the glyphs drawn.
-const ASCENT = 1.069;
-const DESCENT = 0.293;
+import { geometryBox, TEXT_ASCENT, TEXT_DESCENT } from '../render/layerBoxes.ts';
+import type { ArtboardScene, SceneNode, ShapeNode, TextNode } from '../scene/scene.ts';
 
 export interface IndexedNode {
   node: SceneNode;
@@ -91,8 +88,8 @@ function textLocalBox(element: SVGGElement, node: TextNode): Box {
   let bottom = -Infinity;
   for (const line of node.lines) {
     const size = Math.max(...line.runs.map((run) => node.styles[run.style]?.size ?? 0));
-    top = Math.min(top, line.y - ASCENT * size);
-    bottom = Math.max(bottom, line.y + DESCENT * size);
+    top = Math.min(top, line.y - TEXT_ASCENT * size);
+    bottom = Math.max(bottom, line.y + TEXT_DESCENT * size);
   }
   if (!Number.isFinite(left) || !Number.isFinite(top)) {
     return { x: 0, y: 0, width: 0, height: 0 };
@@ -106,7 +103,7 @@ function textLocalBox(element: SVGGElement, node: TextNode): Box {
  */
 function clipShapeBox(group: SVGGElement, groupCtm: Affine, shape: ShapeNode): Box {
   const { a, b, c, d, e, f } = shape.transform;
-  const local = geometryBox(shape.geometry);
+  const local = shape.geometry.type === 'path' ? null : geometryBox(shape.geometry);
   if (local) {
     return transformBox(multiply(groupCtm, shape.transform), local);
   }
@@ -116,22 +113,6 @@ function clipShapeBox(group: SVGGElement, groupCtm: Affine, shape: ShapeNode): B
   const box = ctm ? transformBox(ctm, probe.getBBox()) : { x: 0, y: 0, width: 0, height: 0 };
   probe.remove();
   return box;
-}
-
-function geometryBox(geometry: Geometry): Box | null {
-  switch (geometry.type) {
-    case 'rect':
-      return { x: geometry.x, y: geometry.y, width: geometry.width, height: geometry.height };
-    case 'ellipse':
-      return { x: geometry.cx - geometry.rx, y: geometry.cy - geometry.ry, width: geometry.rx * 2, height: geometry.ry * 2 };
-    case 'line': {
-      const x = Math.min(geometry.x1, geometry.x2);
-      const y = Math.min(geometry.y1, geometry.y2);
-      return { x, y, width: Math.abs(geometry.x2 - geometry.x1), height: Math.abs(geometry.y2 - geometry.y1) };
-    }
-    case 'path':
-      return null;
-  }
 }
 
 /** getCTM() returns an SVGMatrix, whose multiply() only accepts another SVGMatrix, so compose by hand. */

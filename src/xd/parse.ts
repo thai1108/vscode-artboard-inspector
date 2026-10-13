@@ -54,6 +54,8 @@ export const SCENE_LIMITS = {
   maxTextRuns: 200_000,
   shadowsPerLayer: 16,
   warnings: 200,
+  /** Ids of hidden layers kept per artboard (for comparing versions). */
+  hiddenLayers: 10_000,
 };
 
 const STROKE_CAPS = new Set(['butt', 'round', 'square']);
@@ -138,6 +140,7 @@ export class XdDocument implements DesignDocument {
       children,
       imageUids: [...builder.imageUids],
       warnings: [...this.warnings, ...builder.warnings],
+      ...(builder.hidden.length ? { hidden: builder.hidden } : {}),
     };
   }
 
@@ -216,6 +219,7 @@ function toBounds(raw: unknown): XdBounds | null {
 class SceneBuilder {
   readonly warnings: string[] = [];
   readonly imageUids = new Set<string>();
+  readonly hidden: string[] = [];
   private nextKey = 0;
   private textRuns = 0;
   private readonly warned = new Set<string>();
@@ -276,6 +280,9 @@ class SceneBuilder {
       }
     }
     if (node.visible === false) {
+      if (typeof node.id === 'string' && node.id && this.hidden.length < SCENE_LIMITS.hiddenLayers) {
+        this.hidden.push(node.id);
+      }
       return null;
     }
     switch (node.type) {
