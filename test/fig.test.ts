@@ -93,6 +93,16 @@ describe('FigDocument scenes', () => {
     assert.deepEqual(rect.layoutSize, { width: 50, height: 20 });
   });
 
+  it('leaves hidden layers out but keeps their ids, so a comparison can tell hidden from deleted', () => {
+    const { scene } = sceneOf([
+      node(11, 10, 'RECTANGLE', { size: { x: 50, y: 20 }, visible: false }),
+      node(12, 10, 'RECTANGLE', { size: { x: 50, y: 20 } }, 'b'),
+    ]);
+    assert.equal(scene.children.length, 1);
+    assert.deepEqual(scene.hidden, ['1:11']);
+    assert.equal(sceneOf([node(12, 10, 'RECTANGLE', { size: { x: 50, y: 20 } })]).scene.hidden, undefined);
+  });
+
   it('keeps a styled artboard frame as one layer so its radius and border are drawn', () => {
     const { scene } = sceneOf([], { cornerRadius: 12, strokePaints: [solid(0, 0, 0)], strokeWeight: 2, strokeAlign: 'INSIDE' });
     const frame = scene.children[0] as GroupNode;

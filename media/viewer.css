@@ -15,6 +15,9 @@
   --dv-canvas: var(--vscode-editorWidget-background, #2a2a2a);
   --dv-select: #18a0fb;
   --dv-redline: #f24822;
+  --dv-diff-added: #22a861;
+  --dv-diff-changed: #e8a317;
+  --dv-diff-removed: #e5484d;
   --dv-mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
 }
 
@@ -851,4 +854,294 @@ button {
 
 .dv-screenshot.difference {
   mix-blend-mode: difference;
+}
+
+/* Compare versions */
+
+#compare-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 32px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--dv-border);
+  white-space: nowrap;
+}
+
+#compare-bar[hidden],
+.compare-filter[hidden] {
+  display: none;
+}
+
+.compare-files {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.compare-file {
+  max-width: 160px;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.compare-arrow {
+  color: var(--dv-dim);
+}
+
+#compare-bar .mode-toggle {
+  margin-right: 0;
+}
+
+#compare-bar .text-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#compare-bar .text-button:disabled:hover {
+  background: transparent;
+}
+
+.compare-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 6px;
+  color: var(--dv-dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.compare-filter input {
+  margin: 0;
+  accent-color: var(--dv-select);
+}
+
+.diff-badge {
+  flex: none;
+  margin-left: auto;
+  padding: 0 5px;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  border-radius: 8px;
+}
+
+.diff-badge.diff-changed {
+  color: #1f1f1f;
+  background: var(--dv-diff-changed);
+}
+
+.diff-badge.diff-added {
+  background: var(--dv-diff-added);
+}
+
+.diff-badge.diff-removed {
+  background: var(--dv-diff-removed);
+}
+
+.diff-badge.diff-skipped {
+  background: var(--dv-dim);
+}
+
+.artboard-item.removed .artboard-name {
+  color: var(--dv-dim);
+  text-decoration: line-through;
+}
+
+.artboard-item.removed.active .artboard-name {
+  color: inherit;
+}
+
+.dv-board-title .diff-badge {
+  margin-left: 4px;
+}
+
+.layer-row.diff-added .layer-name,
+.layer-row.diff-added .layer-icon {
+  color: var(--dv-diff-added);
+}
+
+.layer-row.diff-changed .layer-name,
+.layer-row.diff-changed .layer-icon {
+  color: var(--dv-diff-changed);
+}
+
+.layer-row.diff-removed .layer-name,
+.layer-row.diff-removed .layer-icon {
+  color: var(--dv-diff-removed);
+}
+
+.layer-row.selected .layer-name,
+.layer-row.selected .layer-icon {
+  color: inherit;
+}
+
+.version-tag {
+  flex: none;
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--dv-border);
+  border-radius: 3px;
+}
+
+.version-tag.before {
+  color: #1f1f1f;
+  background: var(--dv-diff-changed);
+  border-color: transparent;
+}
+
+.ov-diff {
+  stroke-width: 1.5;
+}
+
+.ov-diff-added {
+  fill: color-mix(in srgb, var(--dv-diff-added) 10%, transparent);
+  stroke: var(--dv-diff-added);
+}
+
+.ov-diff-changed {
+  fill: color-mix(in srgb, var(--dv-diff-changed) 10%, transparent);
+  stroke: var(--dv-diff-changed);
+}
+
+.ov-diff-removed {
+  fill: color-mix(in srgb, var(--dv-diff-removed) 10%, transparent);
+  stroke: var(--dv-diff-removed);
+}
+
+.ov-diff-ghost {
+  fill: none;
+  stroke-dasharray: 4 3;
+}
+
+.change-status {
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.change-status.diff-added {
+  color: var(--dv-diff-added);
+}
+
+.change-status.diff-changed {
+  color: var(--dv-diff-changed);
+}
+
+.change-status.diff-removed {
+  color: var(--dv-diff-removed);
+}
+
+.change-status .dim {
+  font-weight: 400;
+}
+
+.change-row {
+  display: grid;
+  grid-template-columns: 76px auto auto minmax(0, 1fr);
+  gap: 2px 6px;
+  align-items: baseline;
+  margin: 3px 0;
+}
+
+/* Long values (text contents) get a line each. */
+.change-row.stacked {
+  grid-template-columns: 76px minmax(0, 1fr);
+}
+
+.change-row.stacked .change-arrow {
+  display: none;
+}
+
+.change-row.stacked .change-after {
+  grid-column: 2;
+}
+
+.change-label {
+  color: var(--dv-dim);
+}
+
+.change-before,
+.change-after {
+  font-family: var(--dv-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.change-before {
+  color: var(--dv-dim);
+  text-decoration: line-through;
+}
+
+.change-arrow {
+  color: var(--dv-dim);
+}
+
+.change-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.change-layer {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 4px;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.change-layer:hover {
+  background: var(--dv-hover);
+}
+
+.change-sign {
+  flex: none;
+  width: 10px;
+  font-weight: 700;
+}
+
+.change-layer.diff-added .change-sign {
+  color: var(--dv-diff-added);
+}
+
+.change-layer.diff-changed .change-sign {
+  color: var(--dv-diff-changed);
+}
+
+.change-layer.diff-removed .change-sign {
+  color: var(--dv-diff-removed);
+}
+
+.change-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.change-layer.elsewhere .change-name {
+  font-style: italic;
+}
+
+.change-props {
+  flex: none;
+  max-width: 45%;
+  margin-left: auto;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

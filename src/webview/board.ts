@@ -41,6 +41,8 @@ export interface BoardDeps {
   requestScenes(ids: string[]): void;
   /** Called when the selected artboard changes, e.g. to highlight it in the artboard list. */
   onSelectionChange(artboardId: string | null): void;
+  /** Markup after an artboard's title, e.g. its compare badge. */
+  titleBadge?(artboardId: string): string;
 }
 
 interface LoadedArtboard {
@@ -206,6 +208,15 @@ export class BoardView {
   }
 
   onViewportChange(): void {
+    this.schedule();
+  }
+
+  /** Draws the titles again, e.g. after their badges changed. */
+  refreshTitles(): void {
+    for (const title of this.titleElements.values()) {
+      title.remove();
+    }
+    this.titleElements.clear();
     this.schedule();
   }
 
@@ -480,7 +491,7 @@ export class BoardView {
         title = document.createElement('div');
         title.className = 'dv-board-title';
         title.dataset['artboard'] = item.id;
-        title.textContent = item.title;
+        title.innerHTML = escapeHtml(item.title) + (this.deps.titleBadge?.(item.id) ?? '');
         title.title = item.title;
         titles.append(title);
         this.titleElements.set(item.id, title);

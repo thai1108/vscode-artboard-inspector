@@ -92,6 +92,7 @@ describe('XdDocument', () => {
     ]);
     assert.equal(scene.children.length, 1);
     assert.deepEqual(scene.warnings, ['Unsupported shape "path" ("Broken")', 'Effect "uiBlur" not rendered ("Blurred")']);
+    assert.deepEqual(scene.hidden, ['h'], 'the hidden layer is remembered by id, for comparing versions');
   });
 
   it('converts strokes, shadows, gradients and image fills', () => {

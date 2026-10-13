@@ -1,13 +1,14 @@
 // End-to-end checks of the real webview bundle in Chrome, through the browser preview whose mock host replays
 // VS Code's message serializer. Runs on the synthetic demo; set E2E_FILES (paths joined by the OS path
 // delimiter) to run the generic checks on your own .xd/.fig files too, and E2E_EXPORT_DIR to keep what they export.
+// E2E_COMPARE lists pairs of versions the same way, earlier then later: "v1.xd:v2.xd:old.fig:new.fig".
 import { expect, test, type Page } from '@playwright/test';
 import { writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { imageSize } from '../../src/image.ts';
 import { bandedPng } from '../support/png.ts';
 import { decodePng, exportButton, exportWith, expectStandaloneSvg, findExportLayers, openSvg, originalImage, selectLayerByKey, type SavedFile } from './exportChecks.ts';
-import { buildSampleXd, servePreview, type PreviewSite } from './preview-server.ts';
+import { buildSampleXd, removeSample, servePreview, type PreviewSite } from './preview-server.ts';
 
 /** Console errors, CSP violations and uncaught exceptions seen by the page. */
 function watchProblems(page: Page): string[] {
@@ -113,11 +114,16 @@ async function expectOverlayAt(page: Page, expected: { x: number; y: number; wid
 
 test.describe('synthetic demo', () => {
   let site: PreviewSite;
+  let sample: string;
 
   test.beforeAll(async () => {
-    site = await servePreview(buildSampleXd());
+    sample = buildSampleXd();
+    site = await servePreview(sample);
   });
-  test.afterAll(() => site.close());
+  test.afterAll(async () => {
+    await site.close();
+    removeSample(sample);
+  });
 
   test('single view: renders, inspects, measures, zooms, with images and no console or CSP errors', async ({ page }) => {
     const problems = watchProblems(page);
@@ -428,6 +434,122 @@ test.describe('synthetic demo', () => {
   });
 });
 
+/** The before → after rows of the inspector's Changes section, by label. */
+async function changeRows(page: Page): Promise<Record<string, [string, string]>> {
+  const rows = await page.locator('#inspector .change-row').evaluateAll((elements) =>
+    elements.map((row) => [row.querySelector('.change-label')?.textContent ?? '', row.querySelector('.change-before')?.textContent ?? '', row.querySelector('.change-after')?.textContent ?? '']),
+  );
+  return Object.fromEntries(rows.map(([label = '', before = '', after = '']) => [label, [before, after]]));
+}
+
+/** The changed layers listed in the artboard inspector, opened one after the other. */
+function changeList(page: Page) {
+  return page.locator('#inspector .change-layer');
+}
+
+test.describe('compare versions (synthetic pair)', () => {
+  let site: PreviewSite;
+  let current: string;
+  let earlier: string;
+
+  test.beforeAll(async () => {
+    current = buildSampleXd();
+    earlier = buildSampleXd({ earlier: true });
+    site = await servePreview(current, { compare: earlier });
+  });
+  test.afterAll(async () => {
+    await site.close();
+    removeSample(current);
+    removeSample(earlier);
+  });
+
+  test('compare mode: badges, outlines, before/after, inspector rows, swap, exit, no console or CSP errors', async ({ page }) => {
+    const problems = watchProblems(page);
+    await page.goto(site.url);
+    await expect(page.locator('#artboard-title')).toHaveText('Home 430 × 932');
+    await adoptVsCodeDefaults(page);
+    await expect(page.locator('#compare-bar')).toBeHidden();
+
+    await page.locator('#compare-start').click();
+    await expect(page.locator('#compare-bar')).toBeVisible();
+    await expect(page.locator('#compare-start')).toBeHidden();
+    await expect(page.locator('#compare-files .compare-file')).toHaveText(['sample-store-v1.xd', 'sample-store.xd']);
+    await expect(page.locator('#compare-summary')).toHaveText('Artboards: 1 changed · 1 added · 1 removed · 1 unchanged');
+    await expect(page.locator('#artboards .artboard-item')).toHaveText(['Home10430×932', 'Product detail430×932', 'CartNew430×932', 'WishlistRemoved430×932']);
+    await page.locator('#compare-changed-only').check();
+    await expect(page.locator('#artboards .artboard-item .artboard-name')).toHaveText(['Home', 'Cart', 'Wishlist']);
+    await page.locator('#compare-changed-only').uncheck();
+
+    // Outlines in the overlay layer, measured like the selection outline.
+    await expect(page.locator('#overlay .ov-diff-added')).toHaveCount(1);
+    await expect(page.locator('#overlay .ov-diff-changed')).toHaveCount(8);
+    await expect(page.locator('#overlay .ov-diff-removed.ov-diff-ghost')).toHaveCount(1);
+    await expect(page.locator('#canvas .ov-diff')).toHaveCount(0);
+
+    await changeList(page).filter({ hasText: 'Card / Linen Tote' }).click();
+    await expect(page.locator('.insp-title')).toHaveText('Card / Linen Tote');
+    expect(await changeRows(page)).toEqual({ X: ['231', '223'] });
+    await expect(layoutValue(page, 'X')).toHaveText('223');
+    const selectedOutline = await page.locator('#overlay .ov-selected').evaluate((rect) => ['x', 'y', 'width', 'height'].map((name) => rect.getAttribute(name)));
+    const changedOutlines = await page.locator('#overlay .ov-diff-changed').evaluateAll((rects) => rects.map((rect) => ['x', 'y', 'width', 'height'].map((name) => rect.getAttribute(name))));
+    expect(changedOutlines).toContainEqual(selectedOutline);
+
+    await page.locator('#layers .layer-row', { hasText: 'Card / Linen Tote' }).locator('[data-toggle]').click();
+    await layerRowIn(page, 'Card / Linen Tote', 'Card background').click();
+    await expect(page.locator('#inspector .change-status')).toHaveText('Unchanged');
+
+    await page.locator('.crumbs .crumb').first().click();
+    await changeList(page).filter({ hasText: 'Weekend Sale' }).click();
+    expect(await changeRows(page)).toEqual({ Text: ['Summer Sale', 'Weekend Sale'] });
+    await page.locator('.crumbs .crumb').first().click();
+    await changeList(page).filter({ hasText: 'Hero image' }).click();
+    expect(Object.keys(await changeRows(page))).toEqual(['Image']);
+
+    // Before: the earlier scene with its own image, the removed badge drawn, the added banner a ghost.
+    await page.keyboard.press('`');
+    await expect(page.locator('#version-tag')).toHaveText('Before');
+    await expect(page.locator('#compare-before')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#canvas svg.dv-artboard text', { hasText: 'Summer Sale' })).toHaveCount(1);
+    await expect(page.locator('.insp-title')).toHaveText('Hero image', { timeout: 5_000 });
+    expect(Object.keys(await changeRows(page))).toEqual(['Image']);
+    expect(await expectImagesLoaded(page)).toBe(1);
+    await expect(page.locator('#overlay .ov-diff-removed:not(.ov-diff-ghost)')).toHaveCount(1);
+    await expect(page.locator('#overlay .ov-diff-added.ov-diff-ghost')).toHaveCount(1);
+    await expect(page.locator('#screenshot-load')).toBeHidden();
+    await page.locator('.crumbs .crumb').first().click();
+    await changeList(page).filter({ hasText: 'Card / Linen Tote' }).click();
+    await expect(layoutValue(page, 'X')).toHaveText('231');
+    await page.locator('.crumbs .crumb').first().click();
+    await changeList(page).filter({ hasText: 'Promo badge' }).click();
+    await expect(page.locator('.insp-title')).toHaveText('Promo badge');
+    await expect(page.locator('#inspector .change-status')).toContainText('Removed');
+
+    await page.locator('#compare-after').click();
+    await expect(page.locator('#version-tag')).toHaveText('After');
+    await expect(page.locator('#canvas svg.dv-artboard text', { hasText: 'Weekend Sale' })).toHaveCount(1);
+    expect(await expectImagesLoaded(page)).toBe(1);
+
+    // Swap: the earlier file is shown as the current one.
+    await page.locator('#compare-swap').click();
+    await expect(page.locator('#compare-files .compare-file')).toHaveText(['sample-store.xd', 'sample-store-v1.xd']);
+    await expect(page.locator('#artboards .artboard-item')).toHaveText(['Home10430×932', 'Product detail430×932', 'WishlistNew430×932', 'CartRemoved430×932']);
+    await expect(page.locator('#canvas svg.dv-artboard text', { hasText: 'Summer Sale' })).toHaveCount(1);
+    expect(await expectImagesLoaded(page)).toBe(1);
+    await page.locator('#mode-board').click();
+    await expect(page.locator('#board-titles .dv-board-title')).toHaveText(['Home10', 'Product detail', 'WishlistNew']);
+    await page.keyboard.press('b');
+
+    await page.locator('#compare-exit').click();
+    await expect(page.locator('#compare-bar')).toBeHidden();
+    await expect(page.locator('#compare-start')).toBeVisible();
+    await expect(page.locator('#artboards .artboard-item')).toHaveText(['Home430×932', 'Product detail430×932', 'Cart430×932']);
+    await expect(page.locator('#canvas svg.dv-artboard text', { hasText: 'Weekend Sale' })).toHaveCount(1);
+    await expect(page.locator('#overlay .ov-diff')).toHaveCount(0);
+    expect(await expectImagesLoaded(page)).toBe(1);
+    expect(problems).toEqual([]);
+  });
+});
+
 /** A Japanese phrase from a text layer outside the first artboard, rare enough that its hits are not capped. */
 function japanesePhrase(site: PreviewSite): { artboard: string; query: string } | null {
   const all = site.textsByArtboard.flat();
@@ -541,6 +663,111 @@ for (const file of extraFiles) {
         expect(imageSize(png.data)).toEqual({ width: Math.max(1, Math.round(report.width * scale)), height: Math.max(1, Math.round(report.height * scale)) });
         keep(`${kind} png`, png);
       }
+      expect(problems).toEqual([]);
+    });
+  });
+}
+
+/** The inspector's Layout values of the selected layer, by label. */
+async function layoutValues(page: Page): Promise<Record<string, string>> {
+  const props = page.locator('.insp-section', { has: page.locator('h3', { hasText: /^Layout$/ }) }).locator('.prop');
+  const pairs = await props.evaluateAll((elements) => elements.map((prop) => [prop.querySelector('.prop-label')?.textContent ?? '', prop.querySelector('.prop-value')?.textContent ?? '']));
+  return Object.fromEntries(pairs);
+}
+
+/**
+ * Opens up to `limit` of the changed layers listed for the artboard shown, and checks that their X/Y/W/H rows give
+ * the value the inspector measures for the version on screen. Returns how many layers were checked.
+ */
+async function checkChangeRows(page: Page, version: 'before' | 'after', limit: number): Promise<number> {
+  let checked = 0;
+  const count = await changeList(page).count();
+  for (let i = 0; i < count && checked < limit; i++) {
+    const item = changeList(page).nth(i);
+    if (await item.evaluate((element) => element.classList.contains('elsewhere'))) {
+      continue;
+    }
+    const name = (await item.locator('.change-name').textContent()) ?? '';
+    await item.click();
+    await expect(page.locator('#inspector .changes')).toBeVisible();
+    const rows = await changeRows(page);
+    const layout = await layoutValues(page);
+    for (const label of ['X', 'Y', 'W', 'H']) {
+      const values = rows[label];
+      if (values) {
+        expect(values[version === 'after' ? 1 : 0], `${label} of "${name}" (${version})`).toBe(layout[label]);
+      }
+    }
+    checked++;
+    await page.locator('.crumbs .crumb').first().click();
+  }
+  return checked;
+}
+
+const comparePairs = (process.env['E2E_COMPARE'] ?? '').split(path.delimiter).filter(Boolean);
+
+for (let pair = 0; pair + 1 < comparePairs.length; pair += 2) {
+  const earlierFile = comparePairs[pair] ?? '';
+  const laterFile = comparePairs[pair + 1] ?? '';
+
+  test.describe(`comparing ${path.basename(earlierFile)} → ${path.basename(laterFile)}`, () => {
+    let site: PreviewSite;
+
+    test.beforeAll(async () => {
+      site = await servePreview(laterFile, { compare: earlierFile });
+    });
+    test.afterAll(() => site.close());
+
+    test('compares, shows both versions with their images, and the Changes rows agree with the inspector', async ({ page }) => {
+      test.setTimeout(300_000);
+      const problems = watchProblems(page);
+      await page.goto(site.url);
+      await expect(page.locator('#canvas svg.dv-artboard')).toHaveCount(1, { timeout: 30_000 });
+      await adoptVsCodeDefaults(page);
+      await page.locator('#compare-start').click();
+      await expect(page.locator('#compare-bar')).toBeVisible({ timeout: 60_000 });
+      await expect(page.locator('#compare-files .compare-file')).toHaveText([path.basename(earlierFile), path.basename(laterFile)]);
+
+      await page.locator('#compare-changed-only').check();
+      const listed = await page.locator('#artboards .artboard-item').count();
+      await expect(page.locator('#artboards .artboard-item .diff-badge')).toHaveCount(listed);
+      const changed = page.locator('#artboards .artboard-item:has(.diff-changed)');
+      const changedCount = await changed.count();
+      let layersChecked = 0;
+      for (let i = 0; i < Math.min(3, changedCount); i++) {
+        const item = changed.nth(i);
+        const id = (await item.getAttribute('data-id')) ?? '';
+        await item.click();
+        await expect(page.locator(`#artboards .artboard-item.active[data-id="${id}"]`)).toHaveCount(1, { timeout: 30_000 });
+        await expect(page.locator('#inspector .changes .change-status').first()).not.toHaveText('Loading…', { timeout: 30_000 });
+        await expectImagesLoaded(page, 0);
+        layersChecked += await checkChangeRows(page, 'after', 5);
+        if (await page.locator('#compare-before').isEnabled()) {
+          await page.keyboard.press('`');
+          await expect(page.locator('#version-tag')).toHaveText('Before', { timeout: 30_000 });
+          await expect(page.locator('#canvas svg.dv-artboard')).toHaveCount(1);
+          await expectImagesLoaded(page, 0);
+          layersChecked += await checkChangeRows(page, 'before', 3);
+          await page.locator('#compare-after').click();
+          await expect(page.locator('#version-tag')).toHaveText('After');
+        }
+      }
+      const removed = page.locator('#artboards .artboard-item.removed').first();
+      if (await removed.count()) {
+        await removed.click();
+        await expect(page.locator('#version-tag')).toHaveText('Before', { timeout: 30_000 });
+        await expectImagesLoaded(page, 0);
+      }
+      // Only these runs print: what was found, for whoever compares their own files.
+      console.log(`${path.basename(laterFile)}: ${(await page.locator('#compare-summary').textContent()) ?? ''}; ${layersChecked} changed layers checked against the inspector`);
+
+      await page.locator('#compare-swap').click();
+      await expect(page.locator('#compare-files .compare-file')).toHaveText([path.basename(laterFile), path.basename(earlierFile)], { timeout: 30_000 });
+      await expect(page.locator('#canvas svg.dv-artboard')).toHaveCount(1, { timeout: 30_000 });
+      await expectImagesLoaded(page, 0);
+      await page.locator('#compare-exit').click();
+      await expect(page.locator('#compare-bar')).toBeHidden({ timeout: 30_000 });
+      await expect(page.locator('#canvas svg.dv-artboard')).toHaveCount(1, { timeout: 30_000 });
       expect(problems).toEqual([]);
     });
   });

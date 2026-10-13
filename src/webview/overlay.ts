@@ -1,15 +1,20 @@
 import { fmt, type Box } from '../render/geometry.ts';
 import type { Guide } from '../render/measure.ts';
+import type { DiffMark } from './compare.ts';
 import type { Viewport } from './viewport.ts';
 
 export interface OverlayState {
   hovered: Box | null;
   selected: Box | null;
   guides: Guide[];
+  /** Changed layers while comparing versions, drawn under everything else. */
+  marks?: DiffMark[];
 }
 
 const LABEL_HEIGHT = 18;
 const CHAR_WIDTH = 7;
+/** Outlines drawn at most; a diff lists at most 1,000 changes per artboard anyway. */
+const MAX_MARKS = 2_000;
 
 /** Draws hover/selection outlines and redlines in screen space, so strokes stay 1px at any zoom. */
 export function drawOverlay(svg: SVGSVGElement, viewport: Viewport, state: OverlayState): void {
@@ -19,6 +24,9 @@ export function drawOverlay(svg: SVGSVGElement, viewport: Viewport, state: Overl
     return { x: topLeft.x, y: topLeft.y, width: box.width * viewport.zoom, height: box.height * viewport.zoom };
   };
 
+  for (const mark of (state.marks ?? []).slice(0, MAX_MARKS)) {
+    parts.push(rect(screenBox(mark.box), `ov-diff ov-diff-${mark.status}${mark.ghost ? ' ov-diff-ghost' : ''}`));
+  }
   if (state.hovered) {
     const box = screenBox(state.hovered);
     parts.push(rect(box, 'ov-hover'));

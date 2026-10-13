@@ -1,10 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { CompareSession, type CompareDeps } from './compareSession.ts';
 import type { DesignDocument } from './document.ts';
 import { openDesignDocument } from './openDocument.ts';
 import { pickScreenshot } from './openScreenshot.ts';
-import { artboardMessage, scenesMessage, searchMessage } from './payload.ts';
 import { parseWebviewMessage, type HostMessage } from './protocol.ts';
 import { saveExport, type SaveDeps } from './saveExport.ts';
 import { buildSearchIndex, type SearchIndex } from './search.ts';
@@ -23,7 +23,27 @@ export function vscodeSaveDeps(designUri: vscode.Uri): SaveDeps {
   };
 }
 
-async function readDesign(uri: vscode.Uri): Promise<DesignDocument> {
+/** Compares with a file picked in VS Code's open dialog, read through VS Code's file system. */
+export function vscodeCompareDeps(designUri: vscode.Uri): CompareDeps {
+  return {
+    pickFile: async () =>
+      (
+        await vscode.window.showOpenDialog({
+          title: 'Compare with another version of this design',
+          openLabel: 'Compare',
+          canSelectMany: false,
+          defaultUri: vscode.Uri.joinPath(designUri, '..'),
+          filters: { 'Design files': ['xd', 'fig'] },
+        })
+      )?.[0],
+    readDesign,
+    withProgress: (title, task) => vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title }, task),
+    showErrorMessage: (message) => void vscode.window.showErrorMessage(message),
+  };
+}
+
+/** Reads and opens a design file, refusing files over the size limit before reading them. */
+export async function readDesign(uri: vscode.Uri): Promise<DesignDocument> {
   const { size } = await vscode.workspace.fs.stat(uri);
   if (size > MAX_FILE_SIZE) {
     throw new Error(`File is too large to open (${Math.round(size / 1024 / 1024)} MB; limit ${MAX_FILE_SIZE / 1024 / 1024} MB)`);
@@ -121,40 +141,40 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
     webview.html = webviewHtml(webview, vscode.Uri.joinPath(dist, 'webview.js'), vscode.Uri.joinPath(media, 'viewer.css'));
 
     const post = (message: HostMessage) => void webview.postMessage(message);
-    const postDocument = () =>
-      post({
-        type: 'document',
-        fileName: path.posix.basename(document.uri.path),
-        artboards: [...document.design.artboards],
-        board: document.design.board,
-      });
+    const name = path.posix.basename(document.uri.path);
+    // Each editor compares on its own; the opened file is re-read from `document` because it reloads on change.
+    const session = new CompareSession(() => ({ name, design: document.design, searchIndex: () => document.searchIndex() }), vscodeCompareDeps(document.uri), post);
 
     const subscriptions: vscode.Disposable[] = [
-      document.onDidChange(postDocument),
+      document.onDidChange(() => void session.openedChanged()),
       webview.onDidReceiveMessage((raw: unknown) => {
         const message = parseWebviewMessage(raw);
         switch (message?.type) {
           case 'ready':
-            postDocument();
+            session.ready();
             break;
           case 'loadArtboard':
-            post(artboardMessage(document.design, message.id, new Set(message.knownImages)));
+            post(session.artboard(message.id, new Set(message.knownImages), message.side));
             break;
           case 'loadArtboards':
-            post(scenesMessage(document.design, message.ids, new Set(message.knownImages)));
+            post(session.scenes(message.ids, new Set(message.knownImages)));
             break;
           case 'copy':
             void vscode.env.clipboard.writeText(message.text);
             vscode.window.setStatusBarMessage(`Copied ${message.label}`, 2000);
             break;
-          case 'search': {
-            const { query, seq } = message;
-            document.searchIndex().then(
-              (index) => post(searchMessage(index, query, seq)),
-              (error: unknown) => post({ type: 'searchResults', seq, hits: [], total: 0, searched: 0, error: (error as Error).message }),
-            );
+          case 'search':
+            void session.search(message.query, message.seq).then(post);
             break;
-          }
+          case 'pickCompare':
+            void session.pick();
+            break;
+          case 'swapCompare':
+            session.swap();
+            break;
+          case 'exitCompare':
+            session.exit();
+            break;
           case 'pickScreenshot':
             void pickScreenshot(message.artboardId).then(
               (reply) => {
@@ -171,7 +191,10 @@ export class DesignEditorProvider implements vscode.CustomReadonlyEditorProvider
         }
       }),
     ];
-    panel.onDidDispose(() => subscriptions.forEach((subscription) => subscription.dispose()));
+    panel.onDidDispose(() => {
+      session.dispose();
+      subscriptions.forEach((subscription) => subscription.dispose());
+    });
   }
 }
 

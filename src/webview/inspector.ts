@@ -18,15 +18,18 @@ export interface InspectorContext {
   layerCount: number;
   /** File extension of an embedded image the webview holds; "Save image" is offered only for those. */
   imageFormat?: (uid: string) => string | undefined;
+  /** The Changes section while comparing versions (see compare.ts), shown first. */
+  changes?: string;
 }
 
 export function renderInspector(ctx: InspectorContext): string {
   return ctx.node ? nodeInspector(ctx, ctx.node) : artboardInspector(ctx);
 }
 
-function artboardInspector({ scene, layerCount }: InspectorContext): string {
+function artboardInspector({ scene, layerCount, changes }: InspectorContext): string {
   const parts = [
     header(scene.name, 'Artboard'),
+    changes ?? '',
     section('Size', grid([prop('W', copyable(fmt(scene.width))), prop('H', copyable(fmt(scene.height)))])),
   ];
   if (scene.background) {
@@ -51,7 +54,7 @@ function artboardInspector({ scene, layerCount }: InspectorContext): string {
 }
 
 function nodeInspector(ctx: InspectorContext, node: SceneNode): string {
-  const parts = [header(displayName(node), kindLabel(node)), breadcrumbs(ctx.scene, ctx.ancestors)];
+  const parts = [header(displayName(node), kindLabel(node)), breadcrumbs(ctx.scene, ctx.ancestors), ctx.changes ?? ''];
   if (ctx.box) {
     const items = [
       prop('X', copyable(fmt(ctx.box.x))),

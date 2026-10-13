@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { AgcNode } from '../src/xd/agc.ts';
-import { XdDocument } from '../src/xd/parse.ts';
+import { SCENE_LIMITS, XdDocument } from '../src/xd/parse.ts';
 import type { GroupNode, ShapeNode, TextNode } from '../src/scene/scene.ts';
 import { ZipArchive } from '../src/zip.ts';
 import { buildXd, rgb } from './support/xdFixture.ts';
@@ -84,6 +84,14 @@ describe('malformed XD archives', () => {
 });
 
 describe('unexpected layer content', () => {
+  it('keeps a capped number of hidden layer ids, and only string ones', () => {
+    const hidden = Array.from({ length: SCENE_LIMITS.hiddenLayers + 5 }, (_, i): AgcNode => ({ type: 'shape', id: `h${i}`, visible: false, shape: { type: 'rect', width: 1, height: 1 } }));
+    const odd = [{ type: 'shape', id: 42, visible: false, shape: { type: 'rect', width: 1, height: 1 } } as unknown as AgcNode];
+    const scene = sceneOf([...odd, ...hidden]);
+    assert.equal(scene.hidden?.length, SCENE_LIMITS.hiddenLayers);
+    assert.equal(scene.hidden?.[0], 'h0');
+  });
+
   it('warns about unknown layer types, fills and broken paints', () => {
     const scene = sceneOf([
       { type: 'hologram', id: 'h', name: 'Hologram' } as unknown as AgcNode,
